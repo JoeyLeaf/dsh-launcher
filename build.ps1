@@ -11,6 +11,7 @@ $out = Join-Path $here 'DshLauncher.exe'
 & $csc /nologo /target:winexe /optimize+ /codepage:65001 `
     /out:$out `
     /r:System.dll /r:System.Core.dll /r:System.Drawing.dll /r:System.Windows.Forms.dll `
+    /r:System.IO.Compression.dll /r:System.IO.Compression.FileSystem.dll `
     $src
 
 if ($LASTEXITCODE -ne 0) { throw "编译失败，exit code: $LASTEXITCODE" }

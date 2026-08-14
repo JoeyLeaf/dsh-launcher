@@ -291,11 +291,14 @@ namespace DshLauncher
         private int P(float v) { return (int)(v * _s + 0.5f); }
 
         // ---------- 按钮模型 ----------
+        private enum GlyphKind { None, Play, Stop, Restart, Open, Gear }
+
         private class Btn
         {
             public Rectangle Rect;
             public ButtonVariant Variant;
             public string Text = "";
+            public GlyphKind Glyph = GlyphKind.None; // 图标按钮：非 None 时绘制图标而非文字
             public bool Enabled = true;
             public bool Hover;
             public bool Down;
@@ -303,7 +306,7 @@ namespace DshLauncher
         }
 
         private readonly List<Btn> _btns = new List<Btn>();
-        private Btn _bStart, _bStop, _bRestart, _bOpen, _bCheck, _bUpdate, _bRefresh, _bSettings, _bMin, _bClose;
+        private Btn _bToggle, _bRestart, _bOpen, _bRefresh, _bSettings, _bMin, _bClose;
 
         // ---------- 状态数据 ----------
         private readonly DshSettings _settings;
@@ -315,6 +318,10 @@ namespace DshLauncher
         private bool _npmOk = true;      // npm 是否存在（首次使用场景指引）
         private bool _nodeOk = true;
         private bool _dshInstalled = true; // dsh 是否已安装（从未跑过官方命令时为 false）
+        private int _cardHover = -1;     // 悬停的卡片索引（0=npm 1=node 2=inst 3=latest），-1 无
+        private int _cardDown = -1;
+        private bool _chipHover;         // dsh 卡片"更新"徽标悬停
+        private bool _chipDown;
 
         private string _npmVer = "…", _nodeVer = "…", _instVer = "…", _latestVer = "…";
         private StatusKind _kind = StatusKind.Checking;
@@ -375,35 +382,32 @@ namespace DshLauncher
 
         private void InitButtons()
         {
-            _bStart = NewBtn("启动", ButtonVariant.Primary, 20, 294, 130, 42);
-            _bStart.OnClick = delegate { StartAsync(); };
+            // 主操作：启停（合并）/ 重启 / 打开页面 —— 图标按钮
+            _bToggle = NewBtn("", ButtonVariant.Primary, 164, 294, 96, 44);
+            _bToggle.Glyph = GlyphKind.Play;
+            _bToggle.OnClick = delegate { if (_running) StopAsync(); else StartAsync(); };
 
-            _bStop = NewBtn("停止", ButtonVariant.Danger, 162, 294, 130, 42);
-            _bStop.OnClick = delegate { StopAsync(); };
-
-            _bRestart = NewBtn("重启", ButtonVariant.Secondary, 304, 294, 130, 42);
+            _bRestart = NewBtn("", ButtonVariant.Secondary, 272, 294, 96, 44);
+            _bRestart.Glyph = GlyphKind.Restart;
             _bRestart.OnClick = delegate { RestartAsync(); };
 
-            _bOpen = NewBtn("打开界面", ButtonVariant.Secondary, 446, 294, 154, 42);
+            _bOpen = NewBtn("", ButtonVariant.Secondary, 380, 294, 96, 44);
+            _bOpen.Glyph = GlyphKind.Open;
             _bOpen.OnClick = delegate { OpenUi(); };
 
-            _bCheck = NewBtn("检查更新", ButtonVariant.Secondary, 20, 348, 120, 38);
-            _bCheck.OnClick = delegate { CheckUpdateAsync(); };
-
-            _bUpdate = NewBtn("更新 dsh", ButtonVariant.Secondary, 152, 348, 110, 38);
-            _bUpdate.OnClick = delegate { UpdateAsync(); };
-
-            _bSettings = NewBtn("设置", ButtonVariant.Ghost, 500, 348, 120, 38);
+            // 右上角：设置齿轮 / 最小化 / 关闭
+            _bSettings = NewBtn("", ButtonVariant.Ghost, 498, 12, 34, 30);
+            _bSettings.Glyph = GlyphKind.Gear;
             _bSettings.OnClick = delegate { OpenSettings(); };
 
-            _bRefresh = NewBtn("刷新", ButtonVariant.Ghost, 500, 74, 120, 30);
-            _bRefresh.OnClick = delegate { RefreshAllAsync(); };
-
-            _bMin = NewBtn("—", ButtonVariant.Ghost, 544, 12, 34, 30);
+            _bMin = NewBtn("—", ButtonVariant.Ghost, 540, 12, 34, 30);
             _bMin.OnClick = delegate { WindowState = FormWindowState.Minimized; }; // 最小化到任务栏
 
             _bClose = NewBtn("✕", ButtonVariant.Ghost, 586, 12, 34, 30);
             _bClose.OnClick = delegate { this.Close(); }; // 关闭 → 按设置进托盘
+
+            _bRefresh = NewBtn("刷新", ButtonVariant.Ghost, 500, 74, 120, 30);
+            _bRefresh.OnClick = delegate { RefreshAllAsync(); };
         }
 
         private Btn NewBtn(string text, ButtonVariant variant, float x, float y, float w, float h)
@@ -510,7 +514,7 @@ namespace DshLauncher
             SizeF sz = g.MeasureString(full, _fPill);
             int pillW = P((int)sz.Width + 22);
             int pillH = P(26);
-            Rectangle pill = new Rectangle(P(528) - pillW - P(8), P(16), pillW, pillH);
+            Rectangle pill = new Rectangle(P(490) - pillW - P(8), P(16), pillW, pillH); // 右边界在齿轮前
 
             using (GraphicsPath gp = Theme.RoundedRect(pill, pillH / 2))
             using (SolidBrush f = new SolidBrush(Theme.BgAlt))
@@ -554,13 +558,47 @@ namespace DshLauncher
 
         private void DrawCards(Graphics g)
         {
-            DrawCard(g, P(20), P(114), "npm 版本", _npmVer);
-            DrawCard(g, P(328), P(114), "node 版本", _nodeVer);
-            DrawCard(g, P(20), P(198), "dsh 已装版本", _instVer);
-            DrawCard(g, P(328), P(198), "dsh 最新版本", _latestVer);
+            DrawCard(g, P(20), P(114), "npm 版本", _npmVer, !_npmOk ? "安装 Node.js" : null, _cardHover == 0);
+            DrawCard(g, P(328), P(114), "node 版本", _nodeVer, !_nodeOk ? "安装 Node.js" : null, _cardHover == 1);
+            string instLabel = null;
+            if (!_dshInstalled) instLabel = (_npmOk && _nodeOk) ? "安装 dsh" : "需先安装 Node.js";
+            DrawCard(g, P(20), P(198), "dsh 已装版本", _instVer, instLabel, _cardHover == 2);
+            DrawCard(g, P(328), P(198), "dsh 最新版本", _latestVer, null, false);
+            DrawUpdateChip(g); // 版本不一致时的"更新"徽标
         }
 
-        private void DrawCard(Graphics g, int x, int y, string caption, string value)
+        /// <summary>"更新"徽标：dsh 已安装且存在新版本时，出现在 dsh 已装版本卡片右侧。</summary>
+        private Rectangle UpdateChipRect()
+        {
+            return new Rectangle(P(20) + P(292) - P(66), P(198) + P(25), P(54), P(24));
+        }
+
+        private bool ChipActive()
+        {
+            return _dshInstalled && _updateAvailable;
+        }
+
+        private void DrawUpdateChip(Graphics g)
+        {
+            if (!ChipActive()) return;
+            Rectangle r = UpdateChipRect();
+            using (GraphicsPath gp = Theme.RoundedRect(r, 12))
+            using (SolidBrush f = new SolidBrush(_chipHover ? Theme.Accent : Theme.BgAlt))
+            {
+                g.FillPath(f, gp);
+            }
+            using (GraphicsPath gp = Theme.RoundedRect(r, 12))
+            using (Pen pn = new Pen(_chipHover ? Theme.Accent : Theme.CardBorder))
+            {
+                g.DrawPath(pn, gp);
+            }
+            using (SolidBrush t = new SolidBrush(_chipHover ? Color.White : Theme.Text))
+            {
+                g.DrawString("更新", _fCaption, t, r, _centerFmt);
+            }
+        }
+
+        private void DrawCard(Graphics g, int x, int y, string caption, string value, string installLabel, bool hover)
         {
             Rectangle r = new Rectangle(x, y, P(292), P(72));
             using (GraphicsPath gp = Theme.RoundedRect(r, 10))
@@ -569,7 +607,7 @@ namespace DshLauncher
                 g.FillPath(f, gp);
             }
             using (GraphicsPath gp = Theme.RoundedRect(r, 10))
-            using (Pen pn = new Pen(Theme.CardBorder))
+            using (Pen pn = new Pen(hover ? Theme.Accent : Theme.CardBorder, hover ? 2f : 1f))
             {
                 g.DrawPath(pn, gp);
             }
@@ -577,15 +615,134 @@ namespace DshLauncher
             {
                 g.DrawString(caption, _fCaption, m, x + P(16), y + P(10));
             }
-            using (SolidBrush t = new SolidBrush(Theme.Text))
+            if (installLabel != null)
             {
-                g.DrawString(value, _fValue, t, x + P(16), y + P(36));
+                // 一键安装入口：可安装 = 强调色；被门槛挡住 = 灰色
+                bool gated = installLabel == "需先安装 Node.js";
+                Color c = gated ? Theme.TextMuted : (hover ? Color.White : Theme.Accent);
+                using (SolidBrush t = new SolidBrush(c))
+                {
+                    g.DrawString(installLabel + (gated ? "" : " ▶"), _fValue, t, x + P(16), y + P(34));
+                }
+            }
+            else
+            {
+                using (SolidBrush t = new SolidBrush(Theme.Text))
+                {
+                    g.DrawString(value, _fValue, t, x + P(16), y + P(36));
+                }
             }
         }
 
         private void DrawButton(Graphics g, Btn b)
         {
             Theme.PaintButton(g, b.Rect, b.Variant, b.Text, _fBtn, b.Enabled, b.Hover, b.Down);
+            if (b.Glyph != GlyphKind.None)
+            {
+                // 图标绘制：颜色跟随按钮前景色；挖孔颜色 = 按钮当前填充色
+                Color fc = b.Enabled ? Theme.Text : Theme.TextMuted;
+                Color hole = Theme.Disabled;
+                if (b.Enabled)
+                {
+                    if (b.Variant == ButtonVariant.Primary) hole = (b.Down || b.Hover) ? Theme.AccentDark : Theme.Accent;
+                    else if (b.Variant == ButtonVariant.Danger) hole = b.Down ? Color.FromArgb(56, 32, 34) : (b.Hover ? Color.FromArgb(66, 36, 38) : Color.FromArgb(46, 30, 33));
+                    else hole = b.Down ? Theme.Disabled : (b.Hover ? Theme.Hover : Theme.BgAlt);
+                }
+                DrawGlyph(g, b, fc, hole);
+            }
+        }
+
+        private void DrawGlyph(Graphics g, Btn b, Color fc, Color hole)
+        {
+            Rectangle r = b.Rect;
+            float cx = r.X + r.Width / 2f;
+            float cy = r.Y + r.Height / 2f;
+            switch (b.Glyph)
+            {
+                case GlyphKind.Play: // ▶
+                    {
+                        float s = P(8f);
+                        PointF[] tri = new PointF[] {
+                            new PointF(cx - s * 0.8f, cy - s),
+                            new PointF(cx - s * 0.8f, cy + s),
+                            new PointF(cx + s * 1.1f, cy) };
+                        using (SolidBrush br = new SolidBrush(fc)) g.FillPolygon(br, tri);
+                        break;
+                    }
+                case GlyphKind.Stop: // ■
+                    {
+                        float s = P(8f);
+                        RectangleF sq = new RectangleF(cx - s, cy - s, s * 2f, s * 2f);
+                        using (GraphicsPath gp = Theme.RoundedRect(new Rectangle((int)sq.X, (int)sq.Y, (int)sq.Width, (int)sq.Height), P(3)))
+                        using (SolidBrush br = new SolidBrush(fc)) g.FillPath(br, gp);
+                        break;
+                    }
+                case GlyphKind.Restart: // ⟳
+                    {
+                        float r0 = P(9f);
+                        RectangleF arc = new RectangleF(cx - r0, cy - r0, r0 * 2f, r0 * 2f);
+                        using (Pen pen = new Pen(fc, P(2.4f)))
+                        {
+                            pen.StartCap = LineCap.Round;
+                            pen.EndCap = LineCap.Round;
+                            g.DrawArc(pen, arc, -60f, 270f);
+                        }
+                        // 箭头（弧末端 210°，沿顺时针切线方向）
+                        float a1 = 210f * (float)Math.PI / 180f;
+                        PointF tip = new PointF(cx + r0 * (float)Math.Cos(a1), cy + r0 * (float)Math.Sin(a1));
+                        float ta = 120f * (float)Math.PI / 180f;
+                        PointF d = new PointF((float)Math.Cos(ta), (float)Math.Sin(ta));
+                        PointF side = new PointF(-d.Y, d.X);
+                        float asz = P(4.2f);
+                        PointF[] tri = new PointF[] {
+                            tip,
+                            new PointF(tip.X + d.X * asz + side.X * asz, tip.Y + d.Y * asz + side.Y * asz),
+                            new PointF(tip.X + d.X * asz - side.X * asz, tip.Y + d.Y * asz - side.Y * asz) };
+                        using (SolidBrush br = new SolidBrush(fc)) g.FillPolygon(br, tri);
+                        break;
+                    }
+                case GlyphKind.Open: // ↗ 外链箭头
+                    {
+                        using (Pen pen = new Pen(fc, P(2.2f)))
+                        {
+                            pen.StartCap = LineCap.Round;
+                            pen.EndCap = LineCap.Round;
+                            g.DrawLine(pen, cx - P(8), cy + P(8), cx + P(4), cy - P(4));
+                            g.DrawLine(pen, cx + P(4), cy - P(4), cx + P(9), cy - P(9));
+                            g.DrawLine(pen, cx + P(4), cy - P(4), cx + P(1), cy - P(9));
+                        }
+                        break;
+                    }
+                case GlyphKind.Gear: // ⚙ 齿轮
+                    {
+                        float rr = P(7f);
+                        float tW = P(3.2f), tL = P(4.5f);
+                        using (SolidBrush br = new SolidBrush(fc))
+                        {
+                            for (int i = 0; i < 8; i++)
+                            {
+                                using (GraphicsPath tp = new GraphicsPath())
+                                {
+                                    RectangleF tooth = new RectangleF(cx - tW / 2f, cy - rr - tL, tW, tL + rr * 0.25f);
+                                    tp.AddRectangle(tooth);
+                                    using (Matrix m = new Matrix())
+                                    {
+                                        m.RotateAt(i * 45f, new PointF(cx, cy));
+                                        tp.Transform(m);
+                                        g.FillPath(br, tp);
+                                    }
+                                }
+                            }
+                            g.FillEllipse(br, cx - rr, cy - rr, rr * 2f, rr * 2f);
+                        }
+                        float hh = P(2.6f);
+                        using (SolidBrush hb = new SolidBrush(hole))
+                        {
+                            g.FillEllipse(hb, cx - hh, cy - hh, hh * 2f, hh * 2f);
+                        }
+                        break;
+                    }
+            }
         }
 
         // ---------- 鼠标交互 ----------
@@ -599,6 +756,52 @@ namespace DshLauncher
             return null;
         }
 
+        // 卡片命中：0=npm 1=node 2=dsh已装 3=dsh最新；非卡片返回 -1
+        private int CardAt(Point pt)
+        {
+            Rectangle[] r = new Rectangle[] {
+                new Rectangle(P(20), P(114), P(292), P(72)),
+                new Rectangle(P(328), P(114), P(292), P(72)),
+                new Rectangle(P(20), P(198), P(292), P(72)),
+                new Rectangle(P(328), P(198), P(292), P(72)) };
+            for (int i = 0; i < 4; i++) if (r[i].Contains(pt)) return i;
+            return -1;
+        }
+
+        // 卡片是否处于"一键安装"可点状态
+        private bool CardClickable(int idx)
+        {
+            switch (idx)
+            {
+                case 0: return !_npmOk;
+                case 1: return !_nodeOk;
+                case 2: return !_dshInstalled;
+                default: return false;
+            }
+        }
+
+        private void FireCard(int idx)
+        {
+            switch (idx)
+            {
+                case 0:
+                case 1:
+                    InstallNodeAsync();
+                    break;
+                case 2:
+                    if (_npmOk && _nodeOk)
+                    {
+                        UpdateAsync(); // 安装/更新 dsh
+                    }
+                    else
+                    {
+                        AppendLog("请先安装 Node.js：点击「npm 版本」卡片的一键安装。");
+                        RefreshStatusAsync();
+                    }
+                    break;
+            }
+        }
+
         protected override void OnMouseMove(MouseEventArgs e)
         {
             base.OnMouseMove(e);
@@ -610,6 +813,24 @@ namespace DshLauncher
                 if (b.Hover != h) { b.Hover = h; changed = true; }
                 if (h) hand = true;
             }
+            // "更新"徽标悬停（优先于卡片安装逻辑，二者互斥）
+            bool ch = ChipActive() && UpdateChipRect().Contains(e.Location);
+            if (ch != _chipHover) { _chipHover = ch; changed = true; }
+            if (ch) hand = true;
+
+            int ci = CardAt(e.Location);
+            bool cardHover = CardClickable(ci);
+            if (cardHover != (_cardHover >= 0))
+            {
+                _cardHover = cardHover ? ci : -1;
+                changed = true;
+            }
+            else if (cardHover && _cardHover != ci)
+            {
+                _cardHover = ci;
+                changed = true;
+            }
+            if (cardHover) hand = true;
             if (changed) Invalidate();
             Cursor = hand ? Cursors.Hand : Cursors.Default;
         }
@@ -619,6 +840,19 @@ namespace DshLauncher
             base.OnMouseDown(e);
             if (e.Button == MouseButtons.Left)
             {
+                if (ChipActive() && UpdateChipRect().Contains(e.Location))
+                {
+                    _chipDown = true;
+                    Invalidate();
+                    return;
+                }
+                int ci = CardAt(e.Location);
+                if (CardClickable(ci))
+                {
+                    _cardDown = ci;
+                    Invalidate();
+                    return; // 卡片区按下：不触发拖动
+                }
                 Btn hit = HitTest(e.Location);
                 if (hit != null)
                 {
@@ -637,6 +871,22 @@ namespace DshLauncher
             base.OnMouseUp(e);
             if (e.Button == MouseButtons.Left)
             {
+                if (_chipDown)
+                {
+                    _chipDown = false;
+                    if (ChipActive() && UpdateChipRect().Contains(e.Location)) UpdateAsync();
+                    Invalidate();
+                    return;
+                }
+                if (_cardDown >= 0)
+                {
+                    int d = _cardDown;
+                    _cardDown = -1;
+                    int ci = CardAt(e.Location);
+                    if (ci == d && CardClickable(ci)) FireCard(d);
+                    Invalidate();
+                    return;
+                }
                 Btn hit = HitTest(e.Location);
                 foreach (Btn b in _btns)
                 {
@@ -659,6 +909,8 @@ namespace DshLauncher
                 if (b.Hover) { b.Hover = false; changed = true; }
                 if (b.Down) { b.Down = false; changed = true; }
             }
+            if (_cardHover >= 0 || _cardDown >= 0) { _cardHover = -1; _cardDown = -1; changed = true; }
+            if (_chipHover || _chipDown) { _chipHover = false; _chipDown = false; changed = true; }
             if (changed) Invalidate();
             Cursor = Cursors.Default;
         }
@@ -668,12 +920,12 @@ namespace DshLauncher
         private void UpdateButtons()
         {
             bool idle = !_busy;
-            _bStart.Enabled = idle && !_running;
-            _bStop.Enabled = idle && _running;
+            // 启停合并：停止时=启动（蓝+▶），运行时=停止（红+■）
+            _bToggle.Enabled = idle;
+            _bToggle.Variant = _running ? ButtonVariant.Danger : ButtonVariant.Primary;
+            _bToggle.Glyph = _running ? GlyphKind.Stop : GlyphKind.Play;
             _bRestart.Enabled = idle && _running;
             _bOpen.Enabled = idle && _running;
-            _bCheck.Enabled = idle;
-            _bUpdate.Enabled = idle && _updateAvailable;
             _bRefresh.Enabled = idle;
             _bSettings.Enabled = idle;
             Invalidate();
@@ -865,47 +1117,6 @@ namespace DshLauncher
             RefreshStatusAsync();
         }
 
-        private async void CheckUpdateAsync()
-        {
-            if (_busy) return;
-            SetBusy(true);
-            AppendLog("---- 检查更新 ----");
-            try
-            {
-                Task<string> tInst = Task.Run<string>(new Func<string>(DshService.InstalledDshVersion));
-                Task<string> tLatest = Task.Run<string>(new Func<string>(DshService.LatestDshVersion));
-                await Task.WhenAll(new Task[] { tInst, tLatest });
-                string inst = tInst.Result;
-                string latest = tLatest.Result;
-                if (string.IsNullOrEmpty(latest))
-                {
-                    AppendLog("无法获取最新版本（网络不可用？）。");
-                }
-                else if (string.IsNullOrEmpty(inst))
-                {
-                    AppendLog("未检测到已安装的 dsh，可点击「更新 dsh」安装。");
-                }
-                else if (IsNewerAvailable(inst, latest))
-                {
-                    AppendLog("发现新版本：" + inst + " → " + latest + "，可点击「更新 dsh」。");
-                }
-                else
-                {
-                    AppendLog("已是最新版本：" + inst + "。");
-                }
-                SetCard("inst", string.IsNullOrEmpty(inst) ? "未安装" : inst);
-                SetCard("latest", string.IsNullOrEmpty(latest) ? "无法获取" : latest);
-                _dshInstalled = !string.IsNullOrEmpty(inst);
-                _updateAvailable = IsNewerAvailable(inst, latest);
-            }
-            catch (Exception ex)
-            {
-                AppendLog("检查更新出错：" + ex.Message);
-            }
-            SetBusy(false);
-            UpdateButtons();
-        }
-
         private async void UpdateAsync()
         {
             if (_busy) return;
@@ -942,6 +1153,27 @@ namespace DshLauncher
             }
             SetBusy(false);
             RefreshStatusAsync();
+        }
+
+        /// <summary>一键安装便携 Node.js（含 npm）：自动下载最新 LTS 并解压到本地，免管理员。</summary>
+        private async void InstallNodeAsync()
+        {
+            if (_busy) return;
+            SetBusy(true);
+            AppendLog("---- 安装 Node.js（便携版）----");
+            SetStatus(StatusKind.Checking, "正在下载 Node.js…", "最新 LTS，约 30MB，请稍候");
+            bool ok = false;
+            try
+            {
+                ok = await Task.Run<bool>(delegate { return DshService.InstallPortableNode(AppendLog); });
+            }
+            catch (Exception ex)
+            {
+                AppendLog("安装 Node.js 出错：" + ex.Message);
+            }
+            AppendLog(ok ? "Node.js 安装完成，重新检测环境…" : "Node.js 安装未完成，请检查网络后重试。");
+            SetBusy(false);
+            RefreshAllAsync();
         }
 
         private void OpenUi()
