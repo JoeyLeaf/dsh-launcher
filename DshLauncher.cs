@@ -284,9 +284,9 @@ namespace DshLauncher
     /// </summary>
     internal class MainForm : Form
     {
-        // ---------- 布局（96dpi 设计坐标，运行期按 DPI 缩放） ----------
+        // ---------- 布局（96dpi 设计坐标，运行期按 DPI / 缩放设置缩放） ----------
         private const int WinW = 640, WinH = 600;
-        private readonly float _s;
+        private float _s;
 
         private int P(float v) { return (int)(v * _s + 0.5f); }
 
@@ -341,7 +341,7 @@ namespace DshLauncher
         public MainForm()
         {
             _settings = ConfigStore.Load();
-            using (Graphics g = CreateGraphics()) _s = Math.Max(1f, g.DpiX / 96f);
+            ComputeScale();
 
             Text = "DSH 启动器";
             Icon = Program.AppIcon();
@@ -371,6 +371,43 @@ namespace DshLauncher
         }
 
         // ---------- 初始化 ----------
+
+        // ---------- 初始化 ----------
+
+        /// <summary>
+        /// 计算界面缩放系数：
+        /// DPI 自动缩放上限 100% —— RDP 等高 DPI 会话（125%/150%）下界面不再被放大，
+        /// 始终以固定设计尺寸显示；需要更大/更小用设置里的手动缩放（85 / 100 / 115%）。
+        /// 并保证窗口不超出屏幕工作区。
+        /// </summary>
+        private void ComputeScale()
+        {
+            float s = 1f; // 固定设计尺寸（不随 RDP / 高 DPI 放大）
+            s *= _settings.UiScale / 100f;
+            try
+            {
+                Rectangle wa = Screen.PrimaryScreen.WorkingArea;
+                float m = Math.Min(wa.Width / (float)WinW, wa.Height / (float)WinH);
+                if (s > m) s = m; // 不超过屏幕
+            }
+            catch { }
+            _s = Math.Max(0.7f, s);
+        }
+
+        /// <summary>缩放设置变化后重建布局（按钮、字体、日志区、窗口尺寸）。</summary>
+        private void ApplyUiScale()
+        {
+            ComputeScale();
+            _btns.Clear();
+            InitFonts();
+            InitButtons();
+            _logView.Font = new Font("Consolas", 9f * _s);
+            _logView.SetBounds(P(20), P(412), P(600), P(168));
+            ClientSize = new Size(P(WinW), P(WinH));
+            try { Theme.ApplyRegion(this, 14); } catch { }
+            UpdateButtons();
+            Invalidate();
+        }
 
         private void InitFonts()
         {
@@ -1211,6 +1248,7 @@ namespace DshLauncher
                     _settings.MinimizeToTray = f.Result.MinimizeToTray;
                     _settings.AutoCheckOnStart = f.Result.AutoCheckOnStart;
                     _settings.Language = f.Result.Language;
+                    _settings.UiScale = f.Result.UiScale;
                     ConfigStore.Save(_settings);
                     bool langChanged = _settings.Language != Lang.Current;
                     Lang.Current = _settings.Language == Lang.En ? Lang.En : Lang.Zh;
@@ -1222,8 +1260,8 @@ namespace DshLauncher
                         _bRefresh.Text = Lang.T("refresh");
                         InitTray(); // 重建托盘菜单
                         _statusMain = Lang.T("status_checking");
-                        Invalidate();
                     }
+                    ApplyUiScale(); // 应用界面缩放（同时重建布局与文本）
                     RefreshStatusAsync();
                 }
             }

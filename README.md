@@ -58,7 +58,8 @@ powershell -ExecutionPolicy Bypass -File .\build.ps1
   "autoOpenBrowser": false,  // 启动成功后自动打开浏览器
   "minimizeToTray": true,    // 关闭窗口时最小化到托盘
   "autoCheckOnStart": true,  // 程序启动时自动检测环境
-  "language": "zh"           // 界面语言：zh / en
+  "language": "zh",          // 界面语言：zh / en
+  "uiScale": 100             // 界面缩放：85 / 100 / 115（高 DPI / RDP 下可调小）
 }
 ```
 

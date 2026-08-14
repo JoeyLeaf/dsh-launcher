@@ -18,6 +18,7 @@ namespace DshLauncher
         public bool MinimizeToTray = true;
         public bool AutoCheckOnStart = true;
         public string Language = Lang.Zh;
+        public int UiScale = 100; // 界面缩放百分比：85 / 100 / 115
     }
 
     /// <summary>配置读写：%APPDATA%\DshLauncher\config.json（避免 OneDrive 同步干扰）。</summary>
@@ -55,6 +56,11 @@ namespace DshLauncher
                     string l = (string)v;
                     if (l == Lang.En || l == Lang.Zh) s.Language = l;
                 }
+                if (map.TryGetValue("uiScale", out v) && v is double)
+                {
+                    int sc = (int)(double)v;
+                    if (sc == 85 || sc == 100 || sc == 115) s.UiScale = sc;
+                }
             }
             catch { }
             return s;
@@ -69,7 +75,9 @@ namespace DshLauncher
                     + ",\n  \"autoOpenBrowser\": " + Bool(s.AutoOpenBrowser)
                     + ",\n  \"minimizeToTray\": " + Bool(s.MinimizeToTray)
                     + ",\n  \"autoCheckOnStart\": " + Bool(s.AutoCheckOnStart)
-                    + ",\n  \"language\": \"" + s.Language + "\"\n}";
+                    + ",\n  \"language\": \"" + s.Language + "\""
+                    + ",\n  \"uiScale\": " + s.UiScale.ToString(CultureInfo.InvariantCulture)
+                    + "\n}";
                 File.WriteAllText(FilePath, json);
             }
             catch { }
@@ -143,7 +151,7 @@ namespace DshLauncher
     /// </summary>
     public class SettingsForm : Form
     {
-        private const int WinW = 400, WinH = 400;
+        private const int WinW = 400, WinH = 440;
         private readonly float _s;
 
         private int P(float v) { return (int)(v * _s + 0.5f); }
@@ -175,12 +183,14 @@ namespace DshLauncher
         private readonly List<CheckItem> _checks = new List<CheckItem>();
         private readonly List<BtnItem> _btns = new List<BtnItem>();
         private readonly List<ChipItem> _langChips = new List<ChipItem>();
+        private readonly List<ChipItem> _scaleChips = new List<ChipItem>();
 
         private TextBox _portBox;
         private readonly DshSettings _working;
         private Font _fTitle, _fLabel, _fSmall, _fBtn;
         private readonly StringFormat _centerFmt = new StringFormat();
         private string _lang;
+        private int _scale = 100;
 
         public DshSettings Result { get; private set; }
 
@@ -193,8 +203,9 @@ namespace DshLauncher
             _working.AutoCheckOnStart = current.AutoCheckOnStart;
             _working.Language = current.Language;
             _lang = current.Language;
+            _scale = current.UiScale;
 
-            using (Graphics g = CreateGraphics()) _s = Math.Max(1f, g.DpiX / 96f);
+            _s = 1f; // 固定设计尺寸（与主窗口一致，不随 RDP 高 DPI 放大）
 
             FormBorderStyle = FormBorderStyle.None;
             StartPosition = FormStartPosition.CenterParent;
@@ -259,6 +270,25 @@ namespace DshLauncher
             en.Rect = new Rectangle(P(176), P(252), P(84), P(28));
             _langChips.Add(en);
 
+            // 界面缩放
+            ChipItem sc1 = new ChipItem();
+            sc1.Text = Lang.T("scale_small");
+            sc1.Value = "85";
+            sc1.Rect = new Rectangle(P(96), P(290), P(64), P(28));
+            _scaleChips.Add(sc1);
+
+            ChipItem sc2 = new ChipItem();
+            sc2.Text = Lang.T("scale_medium");
+            sc2.Value = "100";
+            sc2.Rect = new Rectangle(P(168), P(290), P(64), P(28));
+            _scaleChips.Add(sc2);
+
+            ChipItem sc3 = new ChipItem();
+            sc3.Text = Lang.T("scale_large");
+            sc3.Value = "115";
+            sc3.Rect = new Rectangle(P(240), P(290), P(64), P(28));
+            _scaleChips.Add(sc3);
+
             // 按钮
             BtnItem closeX = new BtnItem();
             closeX.Text = "✕";
@@ -270,14 +300,14 @@ namespace DshLauncher
             BtnItem cancel = new BtnItem();
             cancel.Text = Lang.T("settings_cancel");
             cancel.Variant = ButtonVariant.Ghost;
-            cancel.Rect = new Rectangle(P(190), P(346), P(80), P(38));
+            cancel.Rect = new Rectangle(P(190), P(382), P(80), P(38));
             cancel.OnClick = delegate { DialogResult = DialogResult.Cancel; Close(); };
             _btns.Add(cancel);
 
             BtnItem save = new BtnItem();
             save.Text = Lang.T("settings_save");
             save.Variant = ButtonVariant.Primary;
-            save.Rect = new Rectangle(P(286), P(346), P(80), P(38));
+            save.Rect = new Rectangle(P(286), P(382), P(80), P(38));
             save.OnClick = delegate { SaveAndClose(); };
             _btns.Add(save);
         }
@@ -300,12 +330,37 @@ namespace DshLauncher
             {
                 g.DrawString(Lang.T("settings_port_hint"), _fSmall, m, P(20), P(98));
                 g.DrawString(Lang.T("settings_lang"), _fLabel, m, P(20), P(256));
-                g.DrawString(Lang.T("settings_tip"), _fSmall, m, P(20), P(296));
+                g.DrawString(Lang.T("settings_scale"), _fLabel, m, P(20), P(294));
+                g.DrawString(Lang.T("settings_tip"), _fSmall, m, P(20), P(336));
             }
 
             foreach (CheckItem c in _checks) DrawCheck(g, c);
             DrawLangChips(g);
+            DrawScaleChips(g);
             foreach (BtnItem b in _btns) Theme.PaintButton(g, b.Rect, b.Variant, b.Text, _fBtn, true, b.Hover, b.Down);
+        }
+
+        private void DrawScaleChips(Graphics g)
+        {
+            foreach (ChipItem c in _scaleChips)
+            {
+                bool sel = c.Value == _scale.ToString(CultureInfo.InvariantCulture);
+                Rectangle r = c.Rect;
+                using (GraphicsPath gp = Theme.RoundedRect(r, 14))
+                using (SolidBrush f = new SolidBrush(sel ? Theme.Accent : Theme.BgAlt))
+                {
+                    g.FillPath(f, gp);
+                }
+                using (GraphicsPath gp = Theme.RoundedRect(r, 14))
+                using (Pen pn = new Pen(sel ? Theme.Accent : Theme.CardBorder))
+                {
+                    g.DrawPath(pn, gp);
+                }
+                using (SolidBrush t = new SolidBrush(sel ? Color.White : Theme.Text))
+                {
+                    g.DrawString(c.Text, _fLabel, t, r, _centerFmt);
+                }
+            }
         }
 
         private void DrawLangChips(Graphics g)
@@ -383,6 +438,10 @@ namespace DshLauncher
             {
                 if (c.Rect.Contains(e.Location)) hand = true;
             }
+            foreach (ChipItem c in _scaleChips)
+            {
+                if (c.Rect.Contains(e.Location)) hand = true;
+            }
             if (changed) Invalidate();
             Cursor = hand ? Cursors.Hand : Cursors.Default;
         }
@@ -397,6 +456,16 @@ namespace DshLauncher
                 if (c.Rect.Contains(e.Location))
                 {
                     _lang = c.Value;
+                    Invalidate();
+                    return;
+                }
+            }
+            foreach (ChipItem c in _scaleChips)
+            {
+                if (c.Rect.Contains(e.Location))
+                {
+                    int v;
+                    if (int.TryParse(c.Value, NumberStyles.None, CultureInfo.InvariantCulture, out v)) _scale = v;
                     Invalidate();
                     return;
                 }
@@ -466,6 +535,7 @@ namespace DshLauncher
             _working.MinimizeToTray = _checks[1].Checked;
             _working.AutoCheckOnStart = _checks[2].Checked;
             _working.Language = _lang;
+            _working.UiScale = _scale;
             Result = _working;
             DialogResult = DialogResult.OK;
             Close();
