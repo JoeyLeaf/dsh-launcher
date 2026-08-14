@@ -163,8 +163,31 @@ namespace DshLauncher
                     };
                 }
 
+                // 全局异常兜底：记录崩溃日志（logs\crash.log），小白应用保底
+                Application.ThreadException += delegate(object s, System.Threading.ThreadExceptionEventArgs e)
+                {
+                    LogCrash(exeDir, "ThreadException", e.Exception);
+                };
+                AppDomain.CurrentDomain.UnhandledException += delegate(object s, UnhandledExceptionEventArgs e)
+                {
+                    LogCrash(exeDir, "Unhandled", e.ExceptionObject as Exception);
+                };
+
                 Application.Run(form);
             }
+        }
+
+        private static void LogCrash(string exeDir, string kind, Exception ex)
+        {
+            try
+            {
+                string dir = Path.Combine(exeDir, "logs");
+                Directory.CreateDirectory(dir);
+                File.AppendAllText(Path.Combine(dir, "crash.log"),
+                    "[" + DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss") + "] " + kind + "\r\n" + (ex == null ? "(null)" : ex.ToString()) + "\r\n\r\n",
+                    Encoding.UTF8);
+            }
+            catch { }
         }
 
         private static string GetArg(string[] args, string name)
@@ -937,15 +960,19 @@ namespace DshLauncher
                     return;
                 }
                 Btn hit = HitTest(e.Location);
+                Action fire = null;
                 foreach (Btn b in _btns)
                 {
                     if (b.Down)
                     {
                         b.Down = false;
-                        if (hit == b && b.Enabled && b.OnClick != null) b.OnClick();
+                        // OnClick 延迟到循环外执行：点击可能触发 ApplyUiScale 重建 _btns，
+                        // 枚举中修改列表会抛"集合已修改"异常
+                        if (hit == b && b.Enabled && b.OnClick != null) fire = b.OnClick;
                     }
                 }
                 Invalidate();
+                if (fire != null) fire();
             }
         }
 
