@@ -2,7 +2,7 @@
 
 > 一个轻量的 Windows 托盘小工具：一键检测、启动、停止、重启 **DeepSeek Harness（dsh）** Web 界面，支持托盘驻留与可扩展设置。
 
-[![Version](https://img.shields.io/badge/version-0.1.0-blue)](https://github.com/JoeyLeaf/dsh-launcher/releases)
+[![Version](https://img.shields.io/badge/version-0.1.1-blue)](https://github.com/JoeyLeaf/dsh-launcher/releases)
 [![Platform](https://img.shields.io/badge/platform-Windows%2010%2F11-lightgrey)](https://github.com/JoeyLeaf/dsh-launcher)
 [![License](https://img.shields.io/badge/license-MIT-green)](LICENSE)
 
@@ -28,7 +28,7 @@
 
 **方式一：下载 zip 包（推荐）**
 
-1. 从 [Releases](../../releases/latest) 下载 `DshLauncher-v0.1.0.zip`（含 exe 与说明，解压即用）
+1. 从 [Releases](../../releases/latest) 下载 `DshLauncher-v0.1.1.zip`（含 exe 与说明，解压即用）
 2. 解压后双击 `DshLauncher.exe`。若弹出 SmartScreen 提示，点击 **「更多信息 → 仍要运行」**（未签名的开源软件属正常现象）
 3. 主界面点「启动」拉起 dsh web，「停止 / 重启」管理进程，「打开界面」浏览器访问
 
@@ -100,3 +100,4 @@ A：停止按钮会做三重确认，仅结束 dsh 进程；状态显示"未运�
 [MIT](LICENSE) © 2026 JoeyLeaf
 
 > 应用图标使用 DeepSeek 官方鲸鱼图形（来自 dsh 项目自带 favicon.svg），版权归 DeepSeek 所有。
+

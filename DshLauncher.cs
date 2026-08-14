@@ -16,7 +16,7 @@ namespace DshLauncher
     internal static class Program
     {
         /// <summary>应用版本（与 GitHub Release 标签保持一致）。</summary>
-        public const string Version = "0.1.0";
+        public const string Version = "0.1.1";
 
         private static Bitmap _iconBmp;
         private static Icon _icon;
