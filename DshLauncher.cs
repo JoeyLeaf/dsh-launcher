@@ -314,7 +314,7 @@ namespace DshLauncher
         private int P(float v) { return (int)(v * _s + 0.5f); }
 
         // ---------- 按钮模型 ----------
-        private enum GlyphKind { None, Play, Stop, Restart, Open, Gear }
+        private enum GlyphKind { None, Play, Stop, Restart, Open, Gear, Minus, X }
 
         private class Btn
         {
@@ -348,11 +348,10 @@ namespace DshLauncher
 
         private string _npmVer = "…", _nodeVer = "…", _instVer = "…", _latestVer = "…";
         private StatusKind _kind = StatusKind.Checking;
-        private string _statusMain = "检测中…";
         private string _statusSub = "";
 
         // ---------- 字体 ----------
-        private Font _fTitle, _fTag, _fStatus, _fSub, _fCaption, _fValue, _fBtn, _fPill;
+        private Font _fTitle, _fTag, _fStatusSub, _fCaption, _fValue, _fBtn, _fPill;
 
         // ---------- 控件 ----------
         private LogView _logView;
@@ -381,7 +380,6 @@ namespace DshLauncher
 
             // 界面语言（默认中文）
             Lang.Current = _settings.Language == Lang.En ? Lang.En : Lang.Zh;
-            _statusMain = Lang.T("status_checking");
 
             InitFonts();
             InitButtons();
@@ -425,7 +423,7 @@ namespace DshLauncher
             InitFonts();
             InitButtons();
             _logView.Font = new Font("Consolas", 9f * _s);
-            _logView.SetBounds(P(20), P(412), P(600), P(168));
+            _logView.SetBounds(P(20), P(416), P(600), P(172));
             ClientSize = new Size(P(WinW), P(WinH));
             try { Theme.ApplyRegion(this, 14); } catch { }
             UpdateButtons();
@@ -436,8 +434,7 @@ namespace DshLauncher
         {
             _fTitle = Theme.Font(14f * _s, FontStyle.Bold);
             _fTag = Theme.Font(8.5f * _s, FontStyle.Regular);
-            _fStatus = Theme.Font(13f * _s, FontStyle.Bold);
-            _fSub = Theme.Font(9.5f * _s, FontStyle.Regular);
+            _fStatusSub = Theme.Font(11f * _s, FontStyle.Regular);
             _fCaption = Theme.Font(9f * _s, FontStyle.Regular);
             _fValue = Theme.Font(16f * _s, FontStyle.Bold);
             _fBtn = Theme.Font(10.5f * _s, FontStyle.Regular);
@@ -446,16 +443,16 @@ namespace DshLauncher
 
         private void InitButtons()
         {
-            // 主操作：启停（合并）/ 重启 / 打开页面 —— 图标按钮
-            _bToggle = NewBtn("", ButtonVariant.Primary, 164, 294, 96, 44);
+            // 主操作：启停（合并）/ 重启 / 打开页面 —— Lucide 图标按钮
+            _bToggle = NewBtn("", ButtonVariant.Primary, 164, 322, 96, 44);
             _bToggle.Glyph = GlyphKind.Play;
             _bToggle.OnClick = delegate { if (_running) StopAsync(); else StartAsync(); };
 
-            _bRestart = NewBtn("", ButtonVariant.Secondary, 272, 294, 96, 44);
+            _bRestart = NewBtn("", ButtonVariant.Secondary, 272, 322, 96, 44);
             _bRestart.Glyph = GlyphKind.Restart;
             _bRestart.OnClick = delegate { RestartAsync(); };
 
-            _bOpen = NewBtn("", ButtonVariant.Secondary, 380, 294, 96, 44);
+            _bOpen = NewBtn("", ButtonVariant.Secondary, 380, 322, 96, 44);
             _bOpen.Glyph = GlyphKind.Open;
             _bOpen.OnClick = delegate { OpenUi(); };
 
@@ -464,13 +461,15 @@ namespace DshLauncher
             _bSettings.Glyph = GlyphKind.Gear;
             _bSettings.OnClick = delegate { OpenSettings(); };
 
-            _bMin = NewBtn("—", ButtonVariant.Ghost, 540, 12, 34, 30);
+            _bMin = NewBtn("", ButtonVariant.Ghost, 540, 12, 34, 30);
+            _bMin.Glyph = GlyphKind.Minus;
             _bMin.OnClick = delegate { WindowState = FormWindowState.Minimized; }; // 最小化到任务栏
 
-            _bClose = NewBtn("✕", ButtonVariant.Ghost, 586, 12, 34, 30);
+            _bClose = NewBtn("", ButtonVariant.Ghost, 586, 12, 34, 30);
+            _bClose.Glyph = GlyphKind.X;
             _bClose.OnClick = delegate { this.Close(); }; // 关闭 → 按设置进托盘
 
-            _bRefresh = NewBtn(Lang.T("refresh"), ButtonVariant.Ghost, 500, 74, 120, 30);
+            _bRefresh = NewBtn(Lang.T("refresh"), ButtonVariant.Ghost, 500, 72, 120, 30);
             _bRefresh.OnClick = delegate { RefreshAllAsync(); };
         }
 
@@ -488,7 +487,7 @@ namespace DshLauncher
         {
             _logView = new LogView();
             _logView.Font = new Font("Consolas", 9f * _s);
-            _logView.SetBounds(P(20), P(412), P(600), P(168));
+            _logView.SetBounds(P(20), P(416), P(600), P(172));
             Controls.Add(_logView);
         }
 
@@ -606,28 +605,17 @@ namespace DshLauncher
 
         private void DrawStatusLine(Graphics g)
         {
-            Color dotColor = Theme.Green;
-            if (_kind == StatusKind.Stopped) dotColor = Theme.Red;
-            else if (_kind == StatusKind.Checking) dotColor = Theme.Amber;
-
-            using (SolidBrush db = new SolidBrush(dotColor))
-            {
-                g.DrawString("●", _fStatus, db, P(18), P(70));
-            }
+            // 仅一行状态说明（运行中=地址+PID；未运行=引导提示）；状态由右上角胶囊表达
             using (SolidBrush t = new SolidBrush(Theme.Text))
             {
-                g.DrawString(_statusMain, _fStatus, t, P(44), P(68));
-            }
-            using (SolidBrush m = new SolidBrush(Theme.TextMuted))
-            {
-                g.DrawString(_statusSub, _fSub, m, P(44), P(94));
+                g.DrawString(_statusSub, _fStatusSub, t, P(44), P(74));
             }
         }
 
         private void DrawCards(Graphics g)
         {
-            DrawCard(g, P(20), P(114), Lang.T("card_npm"), _npmVer, !_npmOk ? Lang.T("install_node") : null, false, _cardHover == 0);
-            DrawCard(g, P(328), P(114), Lang.T("card_node"), _nodeVer, !_nodeOk ? Lang.T("install_node") : null, false, _cardHover == 1);
+            DrawCard(g, P(20), P(130), Lang.T("card_npm"), _npmVer, !_npmOk ? Lang.T("install_node") : null, false, _cardHover == 0);
+            DrawCard(g, P(328), P(130), Lang.T("card_node"), _nodeVer, !_nodeOk ? Lang.T("install_node") : null, false, _cardHover == 1);
             string instLabel = null;
             bool instGated = false;
             if (!_dshInstalled)
@@ -635,15 +623,15 @@ namespace DshLauncher
                 instGated = !(_npmOk && _nodeOk);
                 instLabel = instGated ? Lang.T("need_node_first") : Lang.T("install_dsh");
             }
-            DrawCard(g, P(20), P(198), Lang.T("card_inst"), _instVer, instLabel, instGated, _cardHover == 2);
-            DrawCard(g, P(328), P(198), Lang.T("card_latest"), _latestVer, null, false, false);
+            DrawCard(g, P(20), P(214), Lang.T("card_inst"), _instVer, instLabel, instGated, _cardHover == 2);
+            DrawCard(g, P(328), P(214), Lang.T("card_latest"), _latestVer, null, false, false);
             DrawUpdateChip(g); // 版本不一致时的"更新"徽标
         }
 
         /// <summary>"更新"徽标：dsh 已安装且存在新版本时，出现在 dsh 已装版本卡片右侧。</summary>
         private Rectangle UpdateChipRect()
         {
-            return new Rectangle(P(20) + P(292) - P(66), P(198) + P(25), P(54), P(24));
+            return new Rectangle(P(20) + P(292) - P(66), P(214) + P(25), P(54), P(24));
         }
 
         private bool ChipActive()
@@ -711,109 +699,28 @@ namespace DshLauncher
             Theme.PaintButton(g, b.Rect, b.Variant, b.Text, _fBtn, b.Enabled, b.Hover, b.Down);
             if (b.Glyph != GlyphKind.None)
             {
-                // 图标绘制：颜色跟随按钮前景色；挖孔颜色 = 按钮当前填充色
                 Color fc = b.Enabled ? Theme.Text : Theme.TextMuted;
-                Color hole = Theme.Disabled;
-                if (b.Enabled)
-                {
-                    if (b.Variant == ButtonVariant.Primary) hole = (b.Down || b.Hover) ? Theme.AccentDark : Theme.Accent;
-                    else if (b.Variant == ButtonVariant.Danger) hole = b.Down ? Color.FromArgb(56, 32, 34) : (b.Hover ? Color.FromArgb(66, 36, 38) : Color.FromArgb(46, 30, 33));
-                    else hole = b.Down ? Theme.Disabled : (b.Hover ? Theme.Hover : Theme.BgAlt);
-                }
-                DrawGlyph(g, b, fc, hole);
+                DrawGlyph(g, b, fc);
             }
         }
 
-        private void DrawGlyph(Graphics g, Btn b, Color fc, Color hole)
+        /// <summary>绘制 Lucide 官方图标（替代手绘字形）。</summary>
+        private void DrawGlyph(Graphics g, Btn b, Color fc)
         {
             Rectangle r = b.Rect;
             float cx = r.X + r.Width / 2f;
             float cy = r.Y + r.Height / 2f;
+            float size = Math.Min(r.Width, r.Height) * 0.55f;
+            RectangleF bounds = new RectangleF(cx - size / 2f, cy - size / 2f, size, size);
             switch (b.Glyph)
             {
-                case GlyphKind.Play: // ▶
-                    {
-                        float s = P(8f);
-                        PointF[] tri = new PointF[] {
-                            new PointF(cx - s * 0.8f, cy - s),
-                            new PointF(cx - s * 0.8f, cy + s),
-                            new PointF(cx + s * 1.1f, cy) };
-                        using (SolidBrush br = new SolidBrush(fc)) g.FillPolygon(br, tri);
-                        break;
-                    }
-                case GlyphKind.Stop: // ■
-                    {
-                        float s = P(8f);
-                        RectangleF sq = new RectangleF(cx - s, cy - s, s * 2f, s * 2f);
-                        using (GraphicsPath gp = Theme.RoundedRect(new Rectangle((int)sq.X, (int)sq.Y, (int)sq.Width, (int)sq.Height), P(3)))
-                        using (SolidBrush br = new SolidBrush(fc)) g.FillPath(br, gp);
-                        break;
-                    }
-                case GlyphKind.Restart: // ⟳
-                    {
-                        float r0 = P(9f);
-                        RectangleF arc = new RectangleF(cx - r0, cy - r0, r0 * 2f, r0 * 2f);
-                        using (Pen pen = new Pen(fc, P(2.4f)))
-                        {
-                            pen.StartCap = LineCap.Round;
-                            pen.EndCap = LineCap.Round;
-                            g.DrawArc(pen, arc, -60f, 270f);
-                        }
-                        // 箭头（弧末端 210°，沿顺时针切线方向）
-                        float a1 = 210f * (float)Math.PI / 180f;
-                        PointF tip = new PointF(cx + r0 * (float)Math.Cos(a1), cy + r0 * (float)Math.Sin(a1));
-                        float ta = 120f * (float)Math.PI / 180f;
-                        PointF d = new PointF((float)Math.Cos(ta), (float)Math.Sin(ta));
-                        PointF side = new PointF(-d.Y, d.X);
-                        float asz = P(4.2f);
-                        PointF[] tri = new PointF[] {
-                            tip,
-                            new PointF(tip.X + d.X * asz + side.X * asz, tip.Y + d.Y * asz + side.Y * asz),
-                            new PointF(tip.X + d.X * asz - side.X * asz, tip.Y + d.Y * asz - side.Y * asz) };
-                        using (SolidBrush br = new SolidBrush(fc)) g.FillPolygon(br, tri);
-                        break;
-                    }
-                case GlyphKind.Open: // ↗ 外链箭头
-                    {
-                        using (Pen pen = new Pen(fc, P(2.2f)))
-                        {
-                            pen.StartCap = LineCap.Round;
-                            pen.EndCap = LineCap.Round;
-                            g.DrawLine(pen, cx - P(8), cy + P(8), cx + P(4), cy - P(4));
-                            g.DrawLine(pen, cx + P(4), cy - P(4), cx + P(9), cy - P(9));
-                            g.DrawLine(pen, cx + P(4), cy - P(4), cx + P(1), cy - P(9));
-                        }
-                        break;
-                    }
-                case GlyphKind.Gear: // ⚙ 齿轮
-                    {
-                        float rr = P(7f);
-                        float tW = P(3.2f), tL = P(4.5f);
-                        using (SolidBrush br = new SolidBrush(fc))
-                        {
-                            for (int i = 0; i < 8; i++)
-                            {
-                                using (GraphicsPath tp = new GraphicsPath())
-                                {
-                                    RectangleF tooth = new RectangleF(cx - tW / 2f, cy - rr - tL, tW, tL + rr * 0.25f);
-                                    tp.AddRectangle(tooth);
-                                    using (Matrix m = new Matrix())
-                                    {
-                                        m.RotateAt(i * 45f, new PointF(cx, cy));
-                                        tp.Transform(m);
-                                        g.FillPath(br, tp);
-                                    }
-                                }
-                            }
-                            g.FillEllipse(br, cx - rr, cy - rr, rr * 2f, rr * 2f);
-                        }
-                        float hh = P(2.6f);
-                        using (SolidBrush hb = new SolidBrush(hole))
-                        {
-                            g.FillEllipse(hb, cx - hh, cy - hh, hh * 2f, hh * 2f);
-                        }
-                        break;
-                    }
+                case GlyphKind.Play: Lucide.Draw(g, Lucide.Play, bounds, fc, true); break;
+                case GlyphKind.Stop: Lucide.Draw(g, Lucide.Square, bounds, fc, true); break;
+                case GlyphKind.Restart: Lucide.Draw(g, Lucide.RotateCw, bounds, fc, false); break;
+                case GlyphKind.Open: Lucide.Draw(g, Lucide.ExternalLink, bounds, fc, false); break;
+                case GlyphKind.Gear: Lucide.Draw(g, Lucide.Settings, bounds, fc, false); break;
+                case GlyphKind.Minus: Lucide.Draw(g, Lucide.Minus, bounds, fc, false); break;
+                case GlyphKind.X: Lucide.Draw(g, Lucide.X, bounds, fc, false); break;
             }
         }
 
@@ -832,10 +739,10 @@ namespace DshLauncher
         private int CardAt(Point pt)
         {
             Rectangle[] r = new Rectangle[] {
-                new Rectangle(P(20), P(114), P(292), P(72)),
-                new Rectangle(P(328), P(114), P(292), P(72)),
-                new Rectangle(P(20), P(198), P(292), P(72)),
-                new Rectangle(P(328), P(198), P(292), P(72)) };
+                new Rectangle(P(20), P(130), P(292), P(72)),
+                new Rectangle(P(328), P(130), P(292), P(72)),
+                new Rectangle(P(20), P(214), P(292), P(72)),
+                new Rectangle(P(328), P(214), P(292), P(72)) };
             for (int i = 0; i < 4; i++) if (r[i].Contains(pt)) return i;
             return -1;
         }
@@ -1013,10 +920,9 @@ namespace DshLauncher
             UpdateButtons();
         }
 
-        private void SetStatus(StatusKind kind, string main, string sub)
+        private void SetStatus(StatusKind kind, string sub)
         {
             _kind = kind;
-            _statusMain = main;
             _statusSub = sub;
             _running = kind == StatusKind.Running;
             UpdateButtons();
@@ -1052,7 +958,7 @@ namespace DshLauncher
             if (_busy) return;
             SetBusy(true);
             AppendLog(Lang.T("log_check"));
-            SetStatus(StatusKind.Checking, Lang.T("status_checking"), "");
+            SetStatus(StatusKind.Checking, "");
             try
             {
                 Task<string> tNpm = Task.Run<string>(new Func<string>(DshService.NpmVersion));
@@ -1101,7 +1007,7 @@ namespace DshLauncher
                 });
                 if (r.Running)
                 {
-                    SetStatus(StatusKind.Running, Lang.T("status_running"), "http://127.0.0.1:" + port + "  ·  PID " + r.Pid);
+                    SetStatus(StatusKind.Running, "http://127.0.0.1:" + port + "   ·   PID " + r.Pid);
                 }
                 else
                 {
@@ -1119,7 +1025,7 @@ namespace DshLauncher
                     {
                         sub = Lang.F("sub_port_free", port);
                     }
-                    SetStatus(StatusKind.Stopped, Lang.T("status_stopped"), sub);
+                    SetStatus(StatusKind.Stopped, sub);
                 }
             }
             catch (Exception ex)
@@ -1133,7 +1039,7 @@ namespace DshLauncher
             if (_busy) return;
             SetBusy(true);
             AppendLog(Lang.T("log_start"));
-            SetStatus(StatusKind.Checking, Lang.T("status_starting"), "正在拉起 dsh web，请稍候");
+            SetStatus(StatusKind.Checking, Lang.T("status_start_sub"));
             bool ok = false;
             try
             {
@@ -1153,7 +1059,7 @@ namespace DshLauncher
             if (_busy) return;
             SetBusy(true);
             AppendLog(Lang.T("log_stop"));
-            SetStatus(StatusKind.Checking, Lang.T("status_stopping"), "正在结束 dsh 进程并释放端口");
+            SetStatus(StatusKind.Checking, Lang.T("status_stop_sub"));
             try
             {
                 await Task.Run<bool>(delegate { return DshService.Stop(_settings.Port, AppendLog); });
@@ -1171,7 +1077,7 @@ namespace DshLauncher
             if (_busy) return;
             SetBusy(true);
             AppendLog(Lang.T("log_restart"));
-            SetStatus(StatusKind.Checking, Lang.T("status_restarting"), "停止 → 启动");
+            SetStatus(StatusKind.Checking, Lang.T("status_restart_sub"));
             try
             {
                 bool stopped = await Task.Run<bool>(delegate { return DshService.Stop(_settings.Port, AppendLog); });
@@ -1237,7 +1143,7 @@ namespace DshLauncher
             if (_busy) return;
             SetBusy(true);
             AppendLog(Lang.T("log_install_node"));
-            SetStatus(StatusKind.Checking, Lang.T("node_downloading"), Lang.T("node_download_sub"));
+            SetStatus(StatusKind.Checking, Lang.T("node_download_sub"));
             bool ok = false;
             try
             {
@@ -1286,7 +1192,6 @@ namespace DshLauncher
                     {
                         _bRefresh.Text = Lang.T("refresh");
                         InitTray(); // 重建托盘菜单
-                        _statusMain = Lang.T("status_checking");
                     }
                     ApplyUiScale(); // 应用界面缩放（同时重建布局与文本）
                     RefreshStatusAsync();

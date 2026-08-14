@@ -366,56 +366,187 @@ namespace DshLauncher
 
         private static GraphicsPath Base()
         {
-            if (_base == null) _base = Parse(PathData);
+            if (_base == null) _base = SvgPath.Parse(PathData);
             return _base;
         }
 
-        /// <summary>解析 SVG path 数据（支持 M / C / Z，C 后连续三元组）。</summary>
-        private static GraphicsPath Parse(string d)
+        /// <summary>在目标矩形内等比绘制官方鲸鱼。</summary>
+        public static void Draw(Graphics g, RectangleF target, Color body)
+        {
+            GraphicsPath p = (GraphicsPath)Base().Clone();
+            RectangleF b = p.GetBounds();
+            float s = Math.Min(target.Width / b.Width, target.Height / b.Height);
+            // 直接用构造参数组合缩放+平移（x'=s·x+tx），绕开 Matrix.Translate/Scale 的
+            // Prepend/Append 顺序语义坑（实测两种重载都会组合出错误顺序）。
+            float tx = target.X + (target.Width - b.Width * s) / 2f - b.X * s;
+            float ty = target.Y + (target.Height - b.Height * s) / 2f - b.Y * s;
+            Matrix m = new Matrix(s, 0f, 0f, s, tx, ty);
+            p.Transform(m);
+            using (SolidBrush brush = new SolidBrush(body))
+            {
+                g.FillPath(brush, p);
+            }
+            p.Dispose();
+        }
+    }
+
+    /// <summary>
+    /// 完整 SVG path 解析器：支持 M/L/H/V/C/S/Q/T/A/Z 及小写相对命令、
+    /// 隐式重复参数组、椭圆弧（A）转三次贝塞尔。用于鲸鱼与 Lucide 图标渲染。
+    /// </summary>
+    public static class SvgPath
+    {
+        public static GraphicsPath Parse(string d)
         {
             List<string> t = Tokenize(d);
             GraphicsPath p = new GraphicsPath();
             p.FillMode = FillMode.Winding;
             int i = 0;
-            float cx = 0, cy = 0;
+            float cx = 0, cy = 0, sx = 0, sy = 0;
+            float ctrlX = 0, ctrlY = 0; // 上一个曲线的控制点（用于 S/T 反射）
+            char lastCurve = ' ';        // 上一个曲线命令：C/S/Q/T
+            char lastCmd = ' ';          // 上一个命令（用于隐式重复参数组）
+            bool started = false;
             while (i < t.Count)
             {
-                string tok = t[i];
-                if (tok == "M")
+                char cmd;
+                if (IsLetter(t[i])) { cmd = t[i][0]; i++; }
+                else if (started) { cmd = lastCmd; }
+                else { i++; continue; }
+                lastCmd = cmd;
+                bool rel = cmd >= 'a' && cmd <= 'z';
+                char up = char.ToUpperInvariant(cmd);
+                switch (up)
                 {
-                    i++;
-                    if (i + 1 >= t.Count) break;
-                    cx = F(t[i++]);
-                    cy = F(t[i++]);
-                    p.StartFigure();
+                    case 'M':
+                        {
+                            float x = Next(t, ref i), y = Next(t, ref i);
+                            if (rel) { x += cx; y += cy; }
+                            cx = x; cy = y; sx = x; sy = y;
+                            p.StartFigure();
+                            started = true;
+                            lastCurve = ' ';
+                            while (i + 1 < t.Count && !IsLetter(t[i])) // 后续坐标按 l 处理
+                            {
+                                float x2 = Next(t, ref i), y2 = Next(t, ref i);
+                                if (rel) { x2 += cx; y2 += cy; }
+                                p.AddLine(cx, cy, x2, y2);
+                                cx = x2; cy = y2;
+                            }
+                            break;
+                        }
+                    case 'L':
+                        while (i + 1 < t.Count && !IsLetter(t[i]))
+                        {
+                            float x = Next(t, ref i), y = Next(t, ref i);
+                            if (rel) { x += cx; y += cy; }
+                            p.AddLine(cx, cy, x, y);
+                            cx = x; cy = y;
+                        }
+                        lastCurve = ' ';
+                        break;
+                    case 'H':
+                        while (i < t.Count && !IsLetter(t[i]))
+                        {
+                            float x = Next(t, ref i);
+                            if (rel) x += cx;
+                            p.AddLine(cx, cy, x, cy);
+                            cx = x;
+                        }
+                        lastCurve = ' ';
+                        break;
+                    case 'V':
+                        while (i < t.Count && !IsLetter(t[i]))
+                        {
+                            float y = Next(t, ref i);
+                            if (rel) y += cy;
+                            p.AddLine(cx, cy, cx, y);
+                            cy = y;
+                        }
+                        lastCurve = ' ';
+                        break;
+                    case 'C':
+                        while (i + 5 < t.Count && !IsLetter(t[i]))
+                        {
+                            float x1 = Next(t, ref i), y1 = Next(t, ref i), x2 = Next(t, ref i), y2 = Next(t, ref i), x = Next(t, ref i), y = Next(t, ref i);
+                            if (rel) { x1 += cx; y1 += cy; x2 += cx; y2 += cy; x += cx; y += cy; }
+                            p.AddBezier(cx, cy, x1, y1, x2, y2, x, y);
+                            ctrlX = x2; ctrlY = y2; lastCurve = 'C';
+                            cx = x; cy = y;
+                        }
+                        break;
+                    case 'S':
+                        while (i + 3 < t.Count && !IsLetter(t[i]))
+                        {
+                            float x2 = Next(t, ref i), y2 = Next(t, ref i), x = Next(t, ref i), y = Next(t, ref i);
+                            if (rel) { x2 += cx; y2 += cy; x += cx; y += cy; }
+                            float x1, y1;
+                            if (lastCurve == 'C' || lastCurve == 'S') { x1 = 2 * cx - ctrlX; y1 = 2 * cy - ctrlY; }
+                            else { x1 = cx; y1 = cy; }
+                            p.AddBezier(cx, cy, x1, y1, x2, y2, x, y);
+                            ctrlX = x2; ctrlY = y2; lastCurve = 'S';
+                            cx = x; cy = y;
+                        }
+                        break;
+                    case 'Q':
+                        while (i + 3 < t.Count && !IsLetter(t[i]))
+                        {
+                            float x1 = Next(t, ref i), y1 = Next(t, ref i), x = Next(t, ref i), y = Next(t, ref i);
+                            if (rel) { x1 += cx; y1 += cy; x += cx; y += cy; }
+                            p.AddBezier(cx, cy,
+                                cx + (x1 - cx) * 2f / 3f, cy + (y1 - cy) * 2f / 3f,
+                                x + (x1 - x) * 2f / 3f, y + (y1 - y) * 2f / 3f,
+                                x, y);
+                            ctrlX = x1; ctrlY = y1; lastCurve = 'Q';
+                            cx = x; cy = y;
+                        }
+                        break;
+                    case 'T':
+                        while (i + 1 < t.Count && !IsLetter(t[i]))
+                        {
+                            float x = Next(t, ref i), y = Next(t, ref i);
+                            if (rel) { x += cx; y += cy; }
+                            float x1, y1;
+                            if (lastCurve == 'Q' || lastCurve == 'T') { x1 = 2 * cx - ctrlX; y1 = 2 * cy - ctrlY; }
+                            else { x1 = cx; y1 = cy; }
+                            p.AddBezier(cx, cy,
+                                cx + (x1 - cx) * 2f / 3f, cy + (y1 - cy) * 2f / 3f,
+                                x + (x1 - x) * 2f / 3f, y + (y1 - y) * 2f / 3f,
+                                x, y);
+                            ctrlX = x1; ctrlY = y1; lastCurve = 'T';
+                            cx = x; cy = y;
+                        }
+                        break;
+                    case 'A':
+                        while (i + 6 < t.Count && !IsLetter(t[i]))
+                        {
+                            float rx = Next(t, ref i), ry = Next(t, ref i), rot = Next(t, ref i);
+                            float laf = Next(t, ref i), sf = Next(t, ref i);
+                            float x = Next(t, ref i), y = Next(t, ref i);
+                            if (rel) { x += cx; y += cy; }
+                            AddArc(p, cx, cy, Math.Abs(rx), Math.Abs(ry), rot, laf != 0, sf != 0, x, y);
+                            cx = x; cy = y;
+                            lastCurve = ' ';
+                        }
+                        break;
+                    case 'Z':
+                        p.CloseFigure();
+                        cx = sx; cy = sy;
+                        lastCurve = ' ';
+                        break;
+                    default:
+                        i++;
+                        break;
                 }
-                else if (tok == "C")
-                {
-                    i++;
-                    while (i + 5 < t.Count)
-                    {
-                        float x1 = F(t[i]), y1 = F(t[i + 1]), x2 = F(t[i + 2]), y2 = F(t[i + 3]), x = F(t[i + 4]), y = F(t[i + 5]);
-                        i += 6;
-                        p.AddBezier(cx, cy, x1, y1, x2, y2, x, y);
-                        cx = x;
-                        cy = y;
-                        if (i >= t.Count || IsLetter(t[i])) break;
-                    }
-                }
-                else if (tok == "Z")
-                {
-                    p.CloseFigure();
-                    i++;
-                }
-                else i++;
             }
             return p;
         }
 
-        private static float F(string s)
+        private static float Next(List<string> t, ref int i)
         {
             float v;
-            float.TryParse(s, NumberStyles.Float, CultureInfo.InvariantCulture, out v);
+            float.TryParse(t[i], NumberStyles.Float, CultureInfo.InvariantCulture, out v);
+            i++;
             return v;
         }
 
@@ -443,23 +574,102 @@ namespace DshLauncher
             return tokens;
         }
 
-        /// <summary>在目标矩形内等比绘制官方鲸鱼。</summary>
-        public static void Draw(Graphics g, RectangleF target, Color body)
+        /// <summary>SVG 椭圆弧转三次贝塞尔（标准算法）。</summary>
+        private static void AddArc(GraphicsPath p, float x1, float y1, float rx, float ry, float rotDeg, bool largeArc, bool sweep, float x2, float y2)
         {
-            GraphicsPath p = (GraphicsPath)Base().Clone();
-            RectangleF b = p.GetBounds();
-            float s = Math.Min(target.Width / b.Width, target.Height / b.Height);
-            // 直接用构造参数组合缩放+平移（x'=s·x+tx），绕开 Matrix.Translate/Scale 的
-            // Prepend/Append 顺序语义坑（实测两种重载都会组合出错误顺序）。
-            float tx = target.X + (target.Width - b.Width * s) / 2f - b.X * s;
-            float ty = target.Y + (target.Height - b.Height * s) / 2f - b.Y * s;
-            Matrix m = new Matrix(s, 0f, 0f, s, tx, ty);
-            p.Transform(m);
-            using (SolidBrush brush = new SolidBrush(body))
+            if (rx <= 0 || ry <= 0 || (x1 == x2 && y1 == y2))
             {
-                g.FillPath(brush, p);
+                p.AddLine(x1, y1, x2, y2);
+                return;
             }
-            p.Dispose();
+            double phi = rotDeg * Math.PI / 180.0;
+            double cosP = Math.Cos(phi), sinP = Math.Sin(phi);
+            double dx = (x1 - x2) / 2.0, dy = (y1 - y2) / 2.0;
+            double x1p = cosP * dx + sinP * dy;
+            double y1p = -sinP * dx + cosP * dy;
+            double rx2 = rx * rx, ry2 = ry * ry;
+            double x1p2 = x1p * x1p, y1p2 = y1p * y1p;
+            double check = x1p2 / rx2 + y1p2 / ry2;
+            if (check > 1)
+            {
+                double s = Math.Sqrt(check);
+                rx *= (float)s; ry *= (float)s;
+                rx2 = rx * rx; ry2 = ry * ry;
+            }
+            double num = rx2 * ry2 - rx2 * y1p2 - ry2 * x1p2;
+            double den = rx2 * y1p2 + ry2 * x1p2;
+            double coef = (num <= 0) ? 0 : Math.Sqrt(Math.Max(0.0, num / den));
+            if (largeArc == sweep) coef = -coef;
+            double cxp = coef * (rx * y1p / ry);
+            double cyp = -coef * (ry * x1p / rx);
+            double cxm = cosP * cxp - sinP * cyp + (x1 + x2) / 2.0;
+            double cym = sinP * cxp + cosP * cyp + (y1 + y2) / 2.0;
+            double startAng = Math.Atan2((y1p - cyp) / ry, (x1p - cxp) / rx);
+            double delta = Math.Atan2((-y1p - cyp) / ry, (-x1p - cxp) / rx) - startAng;
+            if (!sweep && delta > 0) delta -= 2 * Math.PI;
+            if (sweep && delta < 0) delta += 2 * Math.PI;
+            int segs = Math.Max(1, (int)Math.Ceiling(Math.Abs(delta) / (Math.PI / 2.0)));
+            double step = delta / segs;
+            double a = startAng;
+            double prevX = x1, prevY = y1;
+            for (int s2 = 0; s2 < segs; s2++)
+            {
+                double a2 = a + step;
+                double t = Math.Tan((a2 - a) / 2.0) / 3.0;
+                double ca = Math.Cos(a), sa = Math.Sin(a), ca2 = Math.Cos(a2), sa2 = Math.Sin(a2);
+                PointF p1 = new PointF((float)(cxm + (rx * (ca - t * sa)) * cosP - (ry * (sa + t * ca)) * sinP),
+                                       (float)(cym + (rx * (ca - t * sa)) * sinP + (ry * (sa + t * ca)) * cosP));
+                PointF p2 = new PointF((float)(cxm + (rx * (ca2 + t * sa2)) * cosP - (ry * (sa2 - t * ca2)) * sinP),
+                                       (float)(cym + (rx * (ca2 + t * sa2)) * sinP + (ry * (sa2 - t * ca2)) * cosP));
+                PointF p3 = new PointF((float)(cxm + rx * ca2 * cosP - ry * sa2 * sinP),
+                                       (float)(cym + rx * ca2 * sinP + ry * sa2 * cosP));
+                p.AddBezier(new PointF((float)prevX, (float)prevY), p1, p2, p3);
+                prevX = p3.X; prevY = p3.Y;
+                a = a2;
+            }
+        }
+    }
+
+    /// <summary>Lucide 官方图标（lucide.dev，MIT）— 24×24 线条图标，用于界面按钮。</summary>
+    public static class Lucide
+    {
+        public const string Play = "M6 3l14 9-14 9V3z";
+        public const string Square = "M4 4h16v16H4z";
+        public const string RotateCw = "M21 12a9 9 0 1 1-9-9c2.52 0 4.93 1 6.74 2.74L21 8M21 3v5h-5";
+        public const string ExternalLink = "M15 3h6v6M10 14L21 3M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6";
+        public const string Settings = "M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 1 1.72v.51a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.39a2 2 0 0 0-.73-2.73l-.15-.08a2 2 0 0 1-1-1.74v-.5a2 2 0 0 1 1-1.74l.15-.09a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2zM12 15a3 3 0 1 0 0-6 3 3 0 0 0 0 6z";
+        public const string Minus = "M5 12h14";
+        public const string X = "M18 6 6 18M6 6l12 12";
+
+        /// <summary>在目标矩形内等比绘制 Lucide 图标（filled=false 用线条描边，线宽按 2/24 比例缩放）。</summary>
+        public static void Draw(Graphics g, string pathData, RectangleF bounds, Color color, bool filled)
+        {
+            using (GraphicsPath p = SvgPath.Parse(pathData))
+            {
+                RectangleF b = p.GetBounds();
+                // 水平线/垂直线（如 minus）的包围盒某一维为 0，兜底为 0.1 避免除零
+                float bw = Math.Max(b.Width, 0.1f);
+                float bh = Math.Max(b.Height, 0.1f);
+                float s = Math.Min(bounds.Width / bw, bounds.Height / bh);
+                if (s <= 0) return;
+                float tx = bounds.X + (bounds.Width - bw * s) / 2f - b.X * s;
+                float ty = bounds.Y + (bounds.Height - bh * s) / 2f - b.Y * s;
+                p.Transform(new Matrix(s, 0f, 0f, s, tx, ty));
+                if (filled)
+                {
+                    using (SolidBrush br = new SolidBrush(color)) g.FillPath(br, p);
+                }
+                else
+                {
+                    using (Pen pen = new Pen(color, Math.Max(1f, 2f * s)))
+                    {
+                        pen.StartCap = LineCap.Round;
+                        pen.EndCap = LineCap.Round;
+                        pen.LineJoin = LineJoin.Round;
+                        g.DrawPath(pen, p);
+                    }
+                }
+            }
         }
     }
 }
