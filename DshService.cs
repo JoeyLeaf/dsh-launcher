@@ -42,8 +42,30 @@ namespace DshLauncher
             catch { return null; }
         }
 
+        // npm 解析缓存：一次检测周期内避免重复 spawn `where npm`（10 秒 TTL）
+        private static bool _npmCached;
+        private static string _npmCachedValue;
+        private static long _npmCachedAt;
+        private const long NpmCacheTtlTicks = 10L * TimeSpan.TicksPerSecond;
+
         /// <summary>解析可用的 npm：优先系统 npm，其次便携 Node 自带 npm；都没有返回 null。</summary>
         private static string ResolveNpm()
+        {
+            if (_npmCached && DateTime.UtcNow.Ticks - _npmCachedAt < NpmCacheTtlTicks) return _npmCachedValue;
+            string v = ResolveNpmCore();
+            _npmCachedValue = v;
+            _npmCachedAt = DateTime.UtcNow.Ticks;
+            _npmCached = true;
+            return v;
+        }
+
+        /// <summary>环境变化（如刚装好便携 Node）后调用，使 npm 解析缓存失效。</summary>
+        public static void InvalidateNpmCache()
+        {
+            _npmCached = false;
+        }
+
+        private static string ResolveNpmCore()
         {
             string where = RunCapture("where.exe", "npm", 8000);
             if (!string.IsNullOrEmpty(where)) return "npm";
@@ -89,6 +111,7 @@ namespace DshLauncher
                     return false;
                 }
                 Log(log, "Node.js v" + ver + " 已安装到：" + PortableNodeDir());
+                InvalidateNpmCache(); // 环境变化，npm 解析缓存作废
                 return true;
             }
             catch (Exception e)
