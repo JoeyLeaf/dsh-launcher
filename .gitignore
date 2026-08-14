@@ -1,0 +1,19 @@
+# 编译产物
+DshLauncher.exe
+*.exe
+
+# 发布压缩包（Release 附件，不入库）
+DshLauncher-v*.zip
+
+# 运行时日志
+logs/
+selftest.log
+
+# IDE / 系统
+.vs/
+*.user
+Thumbs.db
+
+# 调试截图产物
+*.test.png
+
