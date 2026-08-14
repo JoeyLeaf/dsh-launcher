@@ -5,7 +5,7 @@ $here = $PSScriptRoot
 $csc = 'C:\Windows\Microsoft.NET\Framework64\v4.0.30319\csc.exe'
 if (-not (Test-Path $csc)) { throw "未找到 csc.exe: $csc" }
 
-$src = @('Theme.cs', 'SettingsForm.cs', 'DshService.cs', 'DshLauncher.cs') | ForEach-Object { Join-Path $here $_ }
+$src = @('Lang.cs', 'Theme.cs', 'SettingsForm.cs', 'DshService.cs', 'DshLauncher.cs') | ForEach-Object { Join-Path $here $_ }
 $out = Join-Path $here 'DshLauncher.exe'
 
 & $csc /nologo /target:winexe /optimize+ /codepage:65001 `

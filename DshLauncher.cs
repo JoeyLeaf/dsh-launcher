@@ -356,6 +356,10 @@ namespace DshLauncher
             _centerFmt.Alignment = StringAlignment.Center;
             _centerFmt.LineAlignment = StringAlignment.Center;
 
+            // 界面语言（默认中文）
+            Lang.Current = _settings.Language == Lang.En ? Lang.En : Lang.Zh;
+            _statusMain = Lang.T("status_checking");
+
             InitFonts();
             InitButtons();
             InitLog();
@@ -406,7 +410,7 @@ namespace DshLauncher
             _bClose = NewBtn("✕", ButtonVariant.Ghost, 586, 12, 34, 30);
             _bClose.OnClick = delegate { this.Close(); }; // 关闭 → 按设置进托盘
 
-            _bRefresh = NewBtn("刷新", ButtonVariant.Ghost, 500, 74, 120, 30);
+            _bRefresh = NewBtn(Lang.T("refresh"), ButtonVariant.Ghost, 500, 74, 120, 30);
             _bRefresh.OnClick = delegate { RefreshAllAsync(); };
         }
 
@@ -430,19 +434,23 @@ namespace DshLauncher
 
         private void InitTray()
         {
+            if (_tray != null)
+            {
+                try { _tray.Visible = false; _tray.Dispose(); } catch { }
+            }
             _trayMenu = new ContextMenuStrip();
             _trayMenu.BackColor = Theme.Bg;
             _trayMenu.ForeColor = Theme.Text;
-            AddMenu("打开主界面", delegate { ShowWindow(); });
-            AddMenu("启动 dsh", delegate { StartAsync(); });
-            AddMenu("停止 dsh", delegate { StopAsync(); });
-            AddMenu("打开 Web 界面", delegate { OpenUi(); });
+            AddMenu(Lang.T("tray_open"), delegate { ShowWindow(); });
+            AddMenu(Lang.T("tray_start"), delegate { StartAsync(); });
+            AddMenu(Lang.T("tray_stop"), delegate { StopAsync(); });
+            AddMenu(Lang.T("tray_web"), delegate { OpenUi(); });
             _trayMenu.Items.Add(new ToolStripSeparator());
-            AddMenu("退出", delegate { ExitApp(); });
+            AddMenu(Lang.T("tray_exit"), delegate { ExitApp(); });
 
             _tray = new NotifyIcon();
             _tray.Icon = Program.AppIcon();
-            _tray.Text = "DSH 启动器";
+            _tray.Text = Lang.T("title");
             _tray.ContextMenuStrip = _trayMenu;
             _tray.Visible = true;
             _tray.DoubleClick += delegate(object s, EventArgs e) { ShowWindow(); };
@@ -493,11 +501,11 @@ namespace DshLauncher
             // 标题 / 副标题
             using (SolidBrush t = new SolidBrush(Theme.Text))
             {
-                g.DrawString("DSH 启动器", _fTitle, t, P(66), P(10));
+                g.DrawString(Lang.T("title"), _fTitle, t, P(66), P(10));
             }
             using (SolidBrush m = new SolidBrush(Theme.TextMuted))
             {
-                g.DrawString("DeepSeek Harness · Web GUI 托管 · v" + Program.Version, _fTag, m, P(66), P(37));
+                g.DrawString(Lang.F("tag", Program.Version), _fTag, m, P(66), P(37));
             }
 
             DrawPill(g);
@@ -506,9 +514,9 @@ namespace DshLauncher
         private void DrawPill(Graphics g)
         {
             Color dotColor = Theme.Green;
-            string text = "运行中";
-            if (_kind == StatusKind.Stopped) { dotColor = Theme.Red; text = "未运行"; }
-            else if (_kind == StatusKind.Checking) { dotColor = Theme.Amber; text = "检测中"; }
+            string text = Lang.T("pill_running");
+            if (_kind == StatusKind.Stopped) { dotColor = Theme.Red; text = Lang.T("pill_stopped"); }
+            else if (_kind == StatusKind.Checking) { dotColor = Theme.Amber; text = Lang.T("pill_checking"); }
 
             string full = "● " + text;
             SizeF sz = g.MeasureString(full, _fPill);
@@ -558,12 +566,17 @@ namespace DshLauncher
 
         private void DrawCards(Graphics g)
         {
-            DrawCard(g, P(20), P(114), "npm 版本", _npmVer, !_npmOk ? "安装 Node.js" : null, _cardHover == 0);
-            DrawCard(g, P(328), P(114), "node 版本", _nodeVer, !_nodeOk ? "安装 Node.js" : null, _cardHover == 1);
+            DrawCard(g, P(20), P(114), Lang.T("card_npm"), _npmVer, !_npmOk ? Lang.T("install_node") : null, false, _cardHover == 0);
+            DrawCard(g, P(328), P(114), Lang.T("card_node"), _nodeVer, !_nodeOk ? Lang.T("install_node") : null, false, _cardHover == 1);
             string instLabel = null;
-            if (!_dshInstalled) instLabel = (_npmOk && _nodeOk) ? "安装 dsh" : "需先安装 Node.js";
-            DrawCard(g, P(20), P(198), "dsh 已装版本", _instVer, instLabel, _cardHover == 2);
-            DrawCard(g, P(328), P(198), "dsh 最新版本", _latestVer, null, false);
+            bool instGated = false;
+            if (!_dshInstalled)
+            {
+                instGated = !(_npmOk && _nodeOk);
+                instLabel = instGated ? Lang.T("need_node_first") : Lang.T("install_dsh");
+            }
+            DrawCard(g, P(20), P(198), Lang.T("card_inst"), _instVer, instLabel, instGated, _cardHover == 2);
+            DrawCard(g, P(328), P(198), Lang.T("card_latest"), _latestVer, null, false, false);
             DrawUpdateChip(g); // 版本不一致时的"更新"徽标
         }
 
@@ -594,11 +607,11 @@ namespace DshLauncher
             }
             using (SolidBrush t = new SolidBrush(_chipHover ? Color.White : Theme.Text))
             {
-                g.DrawString("更新", _fCaption, t, r, _centerFmt);
+                g.DrawString(Lang.T("update_chip"), _fCaption, t, r, _centerFmt);
             }
         }
 
-        private void DrawCard(Graphics g, int x, int y, string caption, string value, string installLabel, bool hover)
+        private void DrawCard(Graphics g, int x, int y, string caption, string value, string installLabel, bool gated, bool hover)
         {
             Rectangle r = new Rectangle(x, y, P(292), P(72));
             using (GraphicsPath gp = Theme.RoundedRect(r, 10))
@@ -618,7 +631,6 @@ namespace DshLauncher
             if (installLabel != null)
             {
                 // 一键安装入口：可安装 = 强调色；被门槛挡住 = 灰色
-                bool gated = installLabel == "需先安装 Node.js";
                 Color c = gated ? Theme.TextMuted : (hover ? Color.White : Theme.Accent);
                 using (SolidBrush t = new SolidBrush(c))
                 {
@@ -795,7 +807,7 @@ namespace DshLauncher
                     }
                     else
                     {
-                        AppendLog("请先安装 Node.js：点击「npm 版本」卡片的一键安装。");
+                        AppendLog(Lang.T("need_node_first_log"));
                         RefreshStatusAsync();
                     }
                     break;
@@ -975,8 +987,8 @@ namespace DshLauncher
         {
             if (_busy) return;
             SetBusy(true);
-            AppendLog("---- 检测环境 ----");
-            SetStatus(StatusKind.Checking, "检测中…", "");
+            AppendLog(Lang.T("log_check"));
+            SetStatus(StatusKind.Checking, Lang.T("status_checking"), "");
             try
             {
                 Task<string> tNpm = Task.Run<string>(new Func<string>(DshService.NpmVersion));
@@ -990,19 +1002,19 @@ namespace DshLauncher
                 string inst = tInst.Result;
                 string latest = tLatest.Result;
 
-                SetCard("npm", string.IsNullOrEmpty(npm) ? "无法获取" : npm);
-                SetCard("node", string.IsNullOrEmpty(node) ? "无法获取" : node);
-                SetCard("inst", string.IsNullOrEmpty(inst) ? "未安装" : inst);
-                SetCard("latest", string.IsNullOrEmpty(latest) ? "无法获取" : latest);
+                SetCard("npm", string.IsNullOrEmpty(npm) ? Lang.T("card_unavailable") : npm);
+                SetCard("node", string.IsNullOrEmpty(node) ? Lang.T("card_unavailable") : node);
+                SetCard("inst", string.IsNullOrEmpty(inst) ? Lang.T("card_not_installed") : inst);
+                SetCard("latest", string.IsNullOrEmpty(latest) ? Lang.T("card_unavailable") : latest);
                 _npmOk = !string.IsNullOrEmpty(npm);
                 _nodeOk = !string.IsNullOrEmpty(node);
                 _dshInstalled = !string.IsNullOrEmpty(inst);
                 _updateAvailable = IsNewerAvailable(inst, latest);
-                AppendLog("npm " + (npm ?? "?") + " · node " + (node ?? "?")
-                    + " · dsh 已装 " + (inst ?? "未安装") + " · 最新 " + (latest ?? "无法获取")
-                    + (_updateAvailable ? " —— 有新版本可更新" : ""));
-                if (!_npmOk || !_nodeOk) AppendLog("提示：未检测到 npm / Node.js，请先安装 Node.js（https://nodejs.org）。");
-                else if (!_dshInstalled) AppendLog("提示：未检测到 dsh，可点击「更新 dsh」一键安装。");
+                AppendLog(Lang.F("log_env_summary", npm ?? "?", node ?? "?",
+                    inst ?? Lang.T("card_not_installed"), latest ?? Lang.T("card_unavailable"))
+                    + (_updateAvailable ? Lang.T("log_update_available") : ""));
+                if (!_npmOk || !_nodeOk) AppendLog(Lang.T("hint_npm_missing"));
+                else if (!_dshInstalled) AppendLog(Lang.T("hint_dsh_missing"));
             }
             catch (Exception ex)
             {
@@ -1025,7 +1037,7 @@ namespace DshLauncher
                 });
                 if (r.Running)
                 {
-                    SetStatus(StatusKind.Running, "dsh 正在运行", "http://127.0.0.1:" + port + "  ·  PID " + r.Pid);
+                    SetStatus(StatusKind.Running, Lang.T("status_running"), "http://127.0.0.1:" + port + "  ·  PID " + r.Pid);
                 }
                 else
                 {
@@ -1033,17 +1045,17 @@ namespace DshLauncher
                     string sub;
                     if (!_npmOk || !_nodeOk)
                     {
-                        sub = "未检测到 npm / Node.js，请先安装（nodejs.org）";
+                        sub = Lang.T("sub_npm_missing");
                     }
                     else if (!_dshInstalled)
                     {
-                        sub = "未检测到 dsh，可点击「更新 dsh」一键安装";
+                        sub = Lang.T("sub_install_dsh");
                     }
                     else
                     {
-                        sub = "端口 " + port + " 空闲，可点击「启动」";
+                        sub = Lang.F("sub_port_free", port);
                     }
-                    SetStatus(StatusKind.Stopped, "dsh 未运行", sub);
+                    SetStatus(StatusKind.Stopped, Lang.T("status_stopped"), sub);
                 }
             }
             catch (Exception ex)
@@ -1056,8 +1068,8 @@ namespace DshLauncher
         {
             if (_busy) return;
             SetBusy(true);
-            AppendLog("---- 启动 dsh ----");
-            SetStatus(StatusKind.Checking, "启动中…", "正在拉起 dsh web，请稍候");
+            AppendLog(Lang.T("log_start"));
+            SetStatus(StatusKind.Checking, Lang.T("status_starting"), "正在拉起 dsh web，请稍候");
             bool ok = false;
             try
             {
@@ -1076,8 +1088,8 @@ namespace DshLauncher
         {
             if (_busy) return;
             SetBusy(true);
-            AppendLog("---- 停止 dsh ----");
-            SetStatus(StatusKind.Checking, "停止中…", "正在结束 dsh 进程并释放端口");
+            AppendLog(Lang.T("log_stop"));
+            SetStatus(StatusKind.Checking, Lang.T("status_stopping"), "正在结束 dsh 进程并释放端口");
             try
             {
                 await Task.Run<bool>(delegate { return DshService.Stop(_settings.Port, AppendLog); });
@@ -1094,8 +1106,8 @@ namespace DshLauncher
         {
             if (_busy) return;
             SetBusy(true);
-            AppendLog("---- 重启 dsh ----");
-            SetStatus(StatusKind.Checking, "重启中…", "停止 → 启动");
+            AppendLog(Lang.T("log_restart"));
+            SetStatus(StatusKind.Checking, Lang.T("status_restarting"), "停止 → 启动");
             try
             {
                 bool stopped = await Task.Run<bool>(delegate { return DshService.Stop(_settings.Port, AppendLog); });
@@ -1121,7 +1133,7 @@ namespace DshLauncher
         {
             if (_busy) return;
             SetBusy(true);
-            AppendLog("---- 更新 dsh ----");
+            AppendLog(Lang.T("log_update"));
             bool ok = false;
             try
             {
@@ -1139,8 +1151,8 @@ namespace DshLauncher
                 await Task.WhenAll(new Task[] { tInst, tLatest });
                 string inst = tInst.Result;
                 string latest = tLatest.Result;
-                SetCard("inst", string.IsNullOrEmpty(inst) ? "未安装" : inst);
-                SetCard("latest", string.IsNullOrEmpty(latest) ? "无法获取" : latest);
+                SetCard("inst", string.IsNullOrEmpty(inst) ? Lang.T("card_not_installed") : inst);
+                SetCard("latest", string.IsNullOrEmpty(latest) ? Lang.T("card_unavailable") : latest);
                 _dshInstalled = !string.IsNullOrEmpty(inst);
                 _updateAvailable = IsNewerAvailable(inst, latest);
                 if (_updateAvailable) AppendLog("仍有新版本可用，可再次点击「更新 dsh」。");
@@ -1160,8 +1172,8 @@ namespace DshLauncher
         {
             if (_busy) return;
             SetBusy(true);
-            AppendLog("---- 安装 Node.js（便携版）----");
-            SetStatus(StatusKind.Checking, "正在下载 Node.js…", "最新 LTS，约 30MB，请稍候");
+            AppendLog(Lang.T("log_install_node"));
+            SetStatus(StatusKind.Checking, Lang.T("node_downloading"), Lang.T("node_download_sub"));
             bool ok = false;
             try
             {
@@ -1171,7 +1183,7 @@ namespace DshLauncher
             {
                 AppendLog("安装 Node.js 出错：" + ex.Message);
             }
-            AppendLog(ok ? "Node.js 安装完成，重新检测环境…" : "Node.js 安装未完成，请检查网络后重试。");
+            AppendLog(ok ? Lang.T("node_done") : Lang.T("node_fail"));
             SetBusy(false);
             RefreshAllAsync();
         }
@@ -1198,10 +1210,20 @@ namespace DshLauncher
                     _settings.AutoOpenBrowser = f.Result.AutoOpenBrowser;
                     _settings.MinimizeToTray = f.Result.MinimizeToTray;
                     _settings.AutoCheckOnStart = f.Result.AutoCheckOnStart;
+                    _settings.Language = f.Result.Language;
                     ConfigStore.Save(_settings);
-                    AppendLog("设置已保存：端口 " + _settings.Port
-                        + " · 自动开浏览器 " + (_settings.AutoOpenBrowser ? "开" : "关")
-                        + " · 关闭最小化 " + (_settings.MinimizeToTray ? "开" : "关"));
+                    bool langChanged = _settings.Language != Lang.Current;
+                    Lang.Current = _settings.Language == Lang.En ? Lang.En : Lang.Zh;
+                    AppendLog(Lang.F("settings_saved", _settings.Port,
+                        _settings.AutoOpenBrowser ? Lang.T("on") : Lang.T("off"),
+                        _settings.MinimizeToTray ? Lang.T("on") : Lang.T("off")));
+                    if (langChanged)
+                    {
+                        _bRefresh.Text = Lang.T("refresh");
+                        InitTray(); // 重建托盘菜单
+                        _statusMain = Lang.T("status_checking");
+                        Invalidate();
+                    }
                     RefreshStatusAsync();
                 }
             }
@@ -1213,7 +1235,7 @@ namespace DshLauncher
         {
             if (_balloonShown) return;
             _balloonShown = true;
-            try { _tray.ShowBalloonTip(2000, "DSH 启动器", "已最小化到托盘，双击图标可重新打开。", ToolTipIcon.Info); } catch { }
+            try { _tray.ShowBalloonTip(2000, Lang.T("title"), Lang.T("balloon_tray"), ToolTipIcon.Info); } catch { }
         }
 
         private void ShowWindow()

@@ -42,33 +42,24 @@ namespace DshLauncher
             catch { return null; }
         }
 
-        // npm 解析缓存：一次检测周期内避免重复 spawn `where npm`（10 秒 TTL）
-        private static bool _npmCached;
-        private static string _npmCachedValue;
-        private static long _npmCachedAt;
-        private const long NpmCacheTtlTicks = 10L * TimeSpan.TicksPerSecond;
-
-        /// <summary>解析可用的 npm：优先系统 npm，其次便携 Node 自带 npm；都没有返回 null。</summary>
-        private static string ResolveNpm()
+        /// <summary>版本形校验：避免把 cmd 报错文本（如"不是内部或外部命令"）误当版本号。</summary>
+        private static bool LooksLikeVersion(string s, bool nodeStyle)
         {
-            if (_npmCached && DateTime.UtcNow.Ticks - _npmCachedAt < NpmCacheTtlTicks) return _npmCachedValue;
-            string v = ResolveNpmCore();
-            _npmCachedValue = v;
-            _npmCachedAt = DateTime.UtcNow.Ticks;
-            _npmCached = true;
-            return v;
+            if (string.IsNullOrEmpty(s)) return false;
+            s = s.Trim();
+            if (nodeStyle) return s.Length > 1 && (s[0] == 'v' || s[0] == 'V');
+            return char.IsDigit(s[0]);
         }
 
-        /// <summary>环境变化（如刚装好便携 Node）后调用，使 npm 解析缓存失效。</summary>
-        public static void InvalidateNpmCache()
+        /// <summary>
+        /// 解析安装 dsh 用的 npm 命令：能跑通 npm --version 就用系统 npm；
+        /// 否则回退便携 Node 自带 npm；都没有返回 null（调用方决定是否安装）。
+        /// 不做 PATH 扫描 / where 探测——命令本身即探测。
+        /// </summary>
+        private static string ResolveNpmForCommand()
         {
-            _npmCached = false;
-        }
-
-        private static string ResolveNpmCore()
-        {
-            string where = RunCapture("where.exe", "npm", 8000);
-            if (!string.IsNullOrEmpty(where)) return "npm";
+            string s = RunCapture("cmd.exe", "/c npm --version", 8000);
+            if (LooksLikeVersion(s, false)) return "npm";
             string dir = PortableNodeDir();
             if (dir != null && File.Exists(Path.Combine(dir, "npm.cmd"))) return Path.Combine(dir, "npm.cmd");
             return null;
@@ -111,7 +102,6 @@ namespace DshLauncher
                     return false;
                 }
                 Log(log, "Node.js v" + ver + " 已安装到：" + PortableNodeDir());
-                InvalidateNpmCache(); // 环境变化，npm 解析缓存作废
                 return true;
             }
             catch (Exception e)
@@ -190,16 +180,17 @@ namespace DshLauncher
 
         public static string NpmVersion()
         {
-            string npm = ResolveNpm();
-            if (npm == null) return null;
-            if (npm == "npm") return RunCapture("cmd.exe", "/c npm --version", 15000);
-            return RunCapture("cmd.exe", "/c \"" + npm + "\" --version", 15000);
+            string s = RunCapture("cmd.exe", "/c npm --version", 15000);
+            if (LooksLikeVersion(s, false)) return s;
+            string dir = PortableNodeDir();
+            if (dir != null) return RunCapture("cmd.exe", "/c \"" + Path.Combine(dir, "npm.cmd") + "\" --version", 15000);
+            return null;
         }
 
         public static string NodeVersion()
         {
             string s = RunCapture("node.exe", "--version", 15000);
-            if (!string.IsNullOrEmpty(s)) return s;
+            if (LooksLikeVersion(s, true)) return s;
             string dir = PortableNodeDir();
             if (dir != null) return RunCapture(Path.Combine(dir, "node.exe"), "--version", 15000);
             return null;
@@ -229,10 +220,11 @@ namespace DshLauncher
         /// <summary>npm 上的最新版本；失败返回 null。</summary>
         public static string LatestDshVersion()
         {
-            string npm = ResolveNpm();
-            if (npm == null) return null;
-            if (npm == "npm") return RunCapture("cmd.exe", "/c npm view " + PkgName + " version", 25000);
-            return RunCapture("cmd.exe", "/c \"" + npm + "\" view " + PkgName + " version", 25000);
+            string s = RunCapture("cmd.exe", "/c npm view " + PkgName + " version", 25000);
+            if (LooksLikeVersion(s, false)) return s;
+            string dir = PortableNodeDir();
+            if (dir != null) return RunCapture("cmd.exe", "/c \"" + Path.Combine(dir, "npm.cmd") + "\" view " + PkgName + " version", 25000);
+            return null;
         }
 
         // ---------- 运行状态 ----------
@@ -310,11 +302,18 @@ namespace DshLauncher
         /// <summary>更新/安装 dsh：全局安装 latest（自动选用系统或便携 npm），日志实时回显。</summary>
         public static bool Update(string workDir, string logPath, Action<string> log)
         {
-            string npm = ResolveNpm();
+            string npm = ResolveNpmForCommand();
             if (npm == null)
             {
-                Log(log, "未找到 npm，请先安装 Node.js（点击「npm 版本」卡片的「安装 Node.js」）。");
-                return false;
+                // 验证不了就装：自动安装便携 Node.js 再试
+                Log(log, "未找到可用的 npm，自动安装便携 Node.js…");
+                if (!InstallPortableNode(log)) return false;
+                npm = ResolveNpmForCommand();
+                if (npm == null)
+                {
+                    Log(log, "仍无法获得 npm，安装中止。请检查网络后重试。");
+                    return false;
+                }
             }
             Log(log, "开始更新 " + PkgName + "（npm install -g @latest）…");
             string args = "/c \"" + npm + "\" install -g " + PkgName + "@latest > \"" + logPath + "\" 2>&1";
