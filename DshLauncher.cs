@@ -312,6 +312,9 @@ namespace DshLauncher
         private bool _updateAvailable;
         private bool _realExit;
         private bool _balloonShown;
+        private bool _npmOk = true;      // npm 是否存在（首次使用场景指引）
+        private bool _nodeOk = true;
+        private bool _dshInstalled = true; // dsh 是否已安装（从未跑过官方命令时为 false）
 
         private string _npmVer = "…", _nodeVer = "…", _instVer = "…", _latestVer = "…";
         private StatusKind _kind = StatusKind.Checking;
@@ -739,10 +742,15 @@ namespace DshLauncher
                 SetCard("node", string.IsNullOrEmpty(node) ? "无法获取" : node);
                 SetCard("inst", string.IsNullOrEmpty(inst) ? "未安装" : inst);
                 SetCard("latest", string.IsNullOrEmpty(latest) ? "无法获取" : latest);
+                _npmOk = !string.IsNullOrEmpty(npm);
+                _nodeOk = !string.IsNullOrEmpty(node);
+                _dshInstalled = !string.IsNullOrEmpty(inst);
                 _updateAvailable = IsNewerAvailable(inst, latest);
                 AppendLog("npm " + (npm ?? "?") + " · node " + (node ?? "?")
                     + " · dsh 已装 " + (inst ?? "未安装") + " · 最新 " + (latest ?? "无法获取")
                     + (_updateAvailable ? " —— 有新版本可更新" : ""));
+                if (!_npmOk || !_nodeOk) AppendLog("提示：未检测到 npm / Node.js，请先安装 Node.js（https://nodejs.org）。");
+                else if (!_dshInstalled) AppendLog("提示：未检测到 dsh，可点击「更新 dsh」一键安装。");
             }
             catch (Exception ex)
             {
@@ -769,7 +777,21 @@ namespace DshLauncher
                 }
                 else
                 {
-                    SetStatus(StatusKind.Stopped, "dsh 未运行", "端口 " + port + " 空闲，可点击「启动」");
+                    // 首次使用场景的明确指引
+                    string sub;
+                    if (!_npmOk || !_nodeOk)
+                    {
+                        sub = "未检测到 npm / Node.js，请先安装（nodejs.org）";
+                    }
+                    else if (!_dshInstalled)
+                    {
+                        sub = "未检测到 dsh，可点击「更新 dsh」一键安装";
+                    }
+                    else
+                    {
+                        sub = "端口 " + port + " 空闲，可点击「启动」";
+                    }
+                    SetStatus(StatusKind.Stopped, "dsh 未运行", sub);
                 }
             }
             catch (Exception ex)
@@ -873,6 +895,7 @@ namespace DshLauncher
                 }
                 SetCard("inst", string.IsNullOrEmpty(inst) ? "未安装" : inst);
                 SetCard("latest", string.IsNullOrEmpty(latest) ? "无法获取" : latest);
+                _dshInstalled = !string.IsNullOrEmpty(inst);
                 _updateAvailable = IsNewerAvailable(inst, latest);
             }
             catch (Exception ex)
@@ -907,6 +930,7 @@ namespace DshLauncher
                 string latest = tLatest.Result;
                 SetCard("inst", string.IsNullOrEmpty(inst) ? "未安装" : inst);
                 SetCard("latest", string.IsNullOrEmpty(latest) ? "无法获取" : latest);
+                _dshInstalled = !string.IsNullOrEmpty(inst);
                 _updateAvailable = IsNewerAvailable(inst, latest);
                 if (_updateAvailable) AppendLog("仍有新版本可用，可再次点击「更新 dsh」。");
                 else if (!string.IsNullOrEmpty(inst)) AppendLog("已是最新版本：" + inst + "。");
