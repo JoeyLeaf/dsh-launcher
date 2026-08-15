@@ -47,6 +47,11 @@ namespace DshLauncher
             { "need_node_first", new[] { "需先安装 Node.js", "Install Node.js first" } },
             { "update_chip",   new[] { "更新", "Update" } },
             { "refresh",       new[] { "刷新", "Refresh" } },
+            // 主操作按钮（图标 + 文字）
+            { "btn_start",     new[] { "启动", "Start" } },
+            { "btn_stop",      new[] { "停止", "Stop" } },
+            { "btn_restart",   new[] { "重启", "Restart" } },
+            { "btn_open",      new[] { "打开界面", "Open UI" } },
             // 日志区
             { "log_title",     new[] { "日志", "Log" } },
             { "log_check",     new[] { "---- 检测环境 ----", "---- Checking environment ----" } },
@@ -71,9 +76,9 @@ namespace DshLauncher
             { "settings_title", new[] { "设置", "Settings" } },
             { "settings_port",  new[] { "端口", "Port" } },
             { "settings_port_hint", new[] { "dsh web 监听端口（默认 3080）", "dsh web listen port (default 3080)" } },
-            { "settings_auto_open", new[] { "启动 dsh 成功后自动打开浏览器", "Auto-open browser after starting dsh" } },
+            { "settings_auto_open", new[] { "启动 dsh 成功后自动打开浏览器", "Open browser after dsh starts" } },
             { "settings_min_tray", new[] { "关闭窗口时最小化到托盘", "Minimize to tray on close" } },
-            { "settings_auto_check", new[] { "程序启动时自动检测环境", "Auto-check environment on startup" } },
+            { "settings_auto_check", new[] { "程序启动时自动检测环境", "Check environment on startup" } },
             { "settings_lang", new[] { "界面语言", "Language" } },
             { "settings_lang_zh", new[] { "中文", "中文" } },
             { "settings_lang_en", new[] { "English", "English" } },

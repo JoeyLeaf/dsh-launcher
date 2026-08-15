@@ -18,6 +18,15 @@ namespace DshLauncher
     {
         public const string PkgName = "@deepseek-ai/dsh";
 
+        // ---------- 代理配置（可选） ----------
+        // dsh 的 node 进程默认直连外网；某些网络环境下直连 opencode.ai 等站点会超时，
+        // 需要走本地 Clash 代理（如 FlClash 默认 127.0.0.1:7890）才能访问。
+        // NODE_USE_ENV_PROXY=1 让 node 的 fetch 遵循 HTTP(S)_PROXY 环境变量（Node 24+）。
+        // 不需要代理时把 EnableProxy 改为 false 即可，改完重新编译。
+        public const bool EnableProxy = true;
+        public const string ProxyUrl = "http://127.0.0.1:7890";
+        public const string ProxyNoProxy = "127.0.0.1,localhost,10.10.6.227,api.deepseek.com,.deepseek.com";
+
         // ---------- 环境解析（系统 + 便携 Node） ----------
 
         /// <summary>便携 Node.js 目录：%LocalAppData%\DshLauncher\node\node-v*-win-x64（一键安装的产物）。</summary>
@@ -268,6 +277,13 @@ namespace DshLauncher
                 ProcessStartInfo psi = new ProcessStartInfo("cmd.exe", args);
                 psi.UseShellExecute = false;
                 psi.CreateNoWindow = true;
+                if (EnableProxy)
+                {
+                    psi.EnvironmentVariables["HTTPS_PROXY"] = ProxyUrl;
+                    psi.EnvironmentVariables["HTTP_PROXY"] = ProxyUrl;
+                    psi.EnvironmentVariables["NODE_USE_ENV_PROXY"] = "1";
+                    psi.EnvironmentVariables["NO_PROXY"] = ProxyNoProxy;
+                }
                 psi.WorkingDirectory = workDir;
                 Process.Start(psi);
             }

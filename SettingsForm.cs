@@ -151,7 +151,7 @@ namespace DshLauncher
     /// </summary>
     public class SettingsForm : Form
     {
-        private const int WinW = 400, WinH = 440;
+        private const int WinW = 420, WinH = 470;
         private readonly float _s;
 
         private int P(float v) { return (int)(v * _s + 0.5f); }
@@ -161,6 +161,7 @@ namespace DshLauncher
             public Rectangle Rect;
             public string Text = "";
             public bool Checked;
+            public bool Hover;
         }
 
         private class BtnItem
@@ -170,6 +171,7 @@ namespace DshLauncher
             public ButtonVariant Variant;
             public bool Hover;
             public bool Down;
+            public bool IconX; // true = 绘制 Lucide X 图标而非文字
             public Action OnClick;
         }
 
@@ -178,6 +180,7 @@ namespace DshLauncher
             public Rectangle Rect;
             public string Text = "";
             public string Value = "";
+            public bool Hover;
         }
 
         private readonly List<CheckItem> _checks = new List<CheckItem>();
@@ -223,93 +226,101 @@ namespace DshLauncher
             _centerFmt.Alignment = StringAlignment.Center;
             _centerFmt.LineAlignment = StringAlignment.Center;
 
-            // 端口输入（唯一真实控件，其余全自绘）
+            // 端口输入（唯一真实控件，其余全自绘）：无边框 TextBox 嵌入自绘圆角容器
             _portBox = new TextBox();
             _portBox.BackColor = Theme.BgAlt;
             _portBox.ForeColor = Theme.Text;
-            _portBox.BorderStyle = BorderStyle.FixedSingle;
-            _portBox.Font = Theme.Font(11f * _s, FontStyle.Regular);
+            _portBox.BorderStyle = BorderStyle.None;
+            _portBox.Font = Theme.Font(10.5f * _s, FontStyle.Regular);
             _portBox.MaxLength = 5;
             _portBox.Text = _working.Port.ToString(CultureInfo.InvariantCulture);
             _portBox.KeyPress += delegate(object s, KeyPressEventArgs e)
             {
                 if (!char.IsDigit(e.KeyChar) && !char.IsControl(e.KeyChar)) e.Handled = true;
             };
-            _portBox.SetBounds(P(100), P(60), P(120), P(30));
+            _portBox.Enter += delegate { Invalidate(); }; // 聚焦时容器描边变强调色
+            _portBox.Leave += delegate { Invalidate(); };
+            _portBox.SetBounds(P(36), P(103), P(116), P(20));
             Controls.Add(_portBox);
 
             // 复选框
             CheckItem c1 = new CheckItem();
             c1.Text = Lang.T("settings_auto_open");
             c1.Checked = _working.AutoOpenBrowser;
-            c1.Rect = new Rectangle(P(20), P(138), P(360), P(30));
+            c1.Rect = new Rectangle(P(24), P(166), P(372), P(30));
             _checks.Add(c1);
 
             CheckItem c2 = new CheckItem();
             c2.Text = Lang.T("settings_min_tray");
             c2.Checked = _working.MinimizeToTray;
-            c2.Rect = new Rectangle(P(20), P(178), P(360), P(30));
+            c2.Rect = new Rectangle(P(24), P(198), P(372), P(30));
             _checks.Add(c2);
 
             CheckItem c3 = new CheckItem();
             c3.Text = Lang.T("settings_auto_check");
             c3.Checked = _working.AutoCheckOnStart;
-            c3.Rect = new Rectangle(P(20), P(218), P(360), P(30));
+            c3.Rect = new Rectangle(P(24), P(230), P(372), P(30));
             _checks.Add(c3);
 
-            // 语言选择
+            // 语言选择（标签独占一行，胶囊另起一行，避免重叠）
             ChipItem zh = new ChipItem();
             zh.Text = Lang.T("settings_lang_zh");
             zh.Value = Lang.Zh;
-            zh.Rect = new Rectangle(P(96), P(252), P(72), P(28));
+            zh.Rect = new Rectangle(P(24), P(296), P(84), P(30));
             _langChips.Add(zh);
 
             ChipItem en = new ChipItem();
             en.Text = Lang.T("settings_lang_en");
             en.Value = Lang.En;
-            en.Rect = new Rectangle(P(176), P(252), P(84), P(28));
+            en.Rect = new Rectangle(P(116), P(296), P(100), P(30));
             _langChips.Add(en);
 
             // 界面缩放
             ChipItem sc1 = new ChipItem();
             sc1.Text = Lang.T("scale_small");
             sc1.Value = "85";
-            sc1.Rect = new Rectangle(P(96), P(290), P(64), P(28));
+            sc1.Rect = new Rectangle(P(24), P(362), P(88), P(30));
             _scaleChips.Add(sc1);
 
             ChipItem sc2 = new ChipItem();
             sc2.Text = Lang.T("scale_medium");
             sc2.Value = "100";
-            sc2.Rect = new Rectangle(P(168), P(290), P(64), P(28));
+            sc2.Rect = new Rectangle(P(120), P(362), P(88), P(30));
             _scaleChips.Add(sc2);
 
             ChipItem sc3 = new ChipItem();
             sc3.Text = Lang.T("scale_large");
             sc3.Value = "115";
-            sc3.Rect = new Rectangle(P(240), P(290), P(64), P(28));
+            sc3.Rect = new Rectangle(P(216), P(362), P(88), P(30));
             _scaleChips.Add(sc3);
 
             // 按钮
             BtnItem closeX = new BtnItem();
-            closeX.Text = "✕";
+            closeX.IconX = true;
             closeX.Variant = ButtonVariant.Ghost;
-            closeX.Rect = new Rectangle(P(354), P(10), P(34), P(30));
+            closeX.Rect = new Rectangle(P(364), P(12), P(32), P(30));
             closeX.OnClick = delegate { DialogResult = DialogResult.Cancel; Close(); };
             _btns.Add(closeX);
 
             BtnItem cancel = new BtnItem();
             cancel.Text = Lang.T("settings_cancel");
-            cancel.Variant = ButtonVariant.Ghost;
-            cancel.Rect = new Rectangle(P(190), P(382), P(80), P(38));
+            cancel.Variant = ButtonVariant.Secondary;
+            cancel.Rect = new Rectangle(P(212), P(412), P(88), P(36));
             cancel.OnClick = delegate { DialogResult = DialogResult.Cancel; Close(); };
             _btns.Add(cancel);
 
             BtnItem save = new BtnItem();
             save.Text = Lang.T("settings_save");
             save.Variant = ButtonVariant.Primary;
-            save.Rect = new Rectangle(P(286), P(382), P(80), P(38));
+            save.Rect = new Rectangle(P(308), P(412), P(88), P(36));
             save.OnClick = delegate { SaveAndClose(); };
             _btns.Add(save);
+        }
+
+        /// <summary>端口输入框外层的自绘圆角容器。</summary>
+        private Rectangle PortBoxRect()
+        {
+            return new Rectangle(P(24), P(94), P(140), P(36));
         }
 
         // ---------- 绘制 ----------
@@ -323,59 +334,75 @@ namespace DshLauncher
 
             using (SolidBrush t = new SolidBrush(Theme.Text))
             {
-                g.DrawString(Lang.T("settings_title"), _fTitle, t, P(20), P(16));
-                g.DrawString(Lang.T("settings_port"), _fLabel, t, P(20), P(64));
+                g.DrawString(Lang.T("settings_title"), _fTitle, t, P(24), P(16));
+            }
+            using (Pen dp = new Pen(Theme.Divider))
+            {
+                g.DrawLine(dp, P(24), P(56), P(396), P(56));
+            }
+            using (SolidBrush t = new SolidBrush(Theme.Text))
+            {
+                g.DrawString(Lang.T("settings_port"), _fLabel, t, P(24), P(72));
+                g.DrawString(Lang.T("settings_lang"), _fLabel, t, P(24), P(274));
+                g.DrawString(Lang.T("settings_scale"), _fLabel, t, P(24), P(340));
             }
             using (SolidBrush m = new SolidBrush(Theme.TextMuted))
             {
-                g.DrawString(Lang.T("settings_port_hint"), _fSmall, m, P(20), P(98));
-                g.DrawString(Lang.T("settings_lang"), _fLabel, m, P(20), P(256));
-                g.DrawString(Lang.T("settings_scale"), _fLabel, m, P(20), P(294));
-                g.DrawString(Lang.T("settings_tip"), _fSmall, m, P(20), P(336));
+                g.DrawString(Lang.T("settings_port_hint"), _fSmall, m, P(24), P(138));
             }
 
+            DrawPortBox(g);
             foreach (CheckItem c in _checks) DrawCheck(g, c);
-            DrawLangChips(g);
-            DrawScaleChips(g);
-            foreach (BtnItem b in _btns) Theme.PaintButton(g, b.Rect, b.Variant, b.Text, _fBtn, true, b.Hover, b.Down);
+            DrawChips(g, _langChips, _lang);
+            DrawChips(g, _scaleChips, _scale.ToString(CultureInfo.InvariantCulture));
+            foreach (BtnItem b in _btns) DrawBtn(g, b);
         }
 
-        private void DrawScaleChips(Graphics g)
+        /// <summary>端口容器：圆角底 + 边框，聚焦时描边变强调色。</summary>
+        private void DrawPortBox(Graphics g)
         {
-            foreach (ChipItem c in _scaleChips)
+            Rectangle r = PortBoxRect();
+            Rectangle rr = new Rectangle(r.X, r.Y, r.Width - 1, r.Height - 1);
+            using (GraphicsPath gp = Theme.RoundedRect(rr, 8))
+            using (SolidBrush f = new SolidBrush(Theme.BgAlt))
             {
-                bool sel = c.Value == _scale.ToString(CultureInfo.InvariantCulture);
-                Rectangle r = c.Rect;
-                using (GraphicsPath gp = Theme.RoundedRect(r, 14))
-                using (SolidBrush f = new SolidBrush(sel ? Theme.Accent : Theme.BgAlt))
-                {
-                    g.FillPath(f, gp);
-                }
-                using (GraphicsPath gp = Theme.RoundedRect(r, 14))
-                using (Pen pn = new Pen(sel ? Theme.Accent : Theme.CardBorder))
-                {
-                    g.DrawPath(pn, gp);
-                }
-                using (SolidBrush t = new SolidBrush(sel ? Color.White : Theme.Text))
-                {
-                    g.DrawString(c.Text, _fLabel, t, r, _centerFmt);
-                }
+                g.FillPath(f, gp);
+            }
+            bool focus = _portBox.Focused;
+            using (GraphicsPath gp = Theme.RoundedRect(rr, 8))
+            using (Pen pn = new Pen(focus ? Theme.Accent : Theme.CardBorder, focus ? 1.4f : 1f))
+            {
+                g.DrawPath(pn, gp);
             }
         }
 
-        private void DrawLangChips(Graphics g)
+        private void DrawBtn(Graphics g, BtnItem b)
         {
-            foreach (ChipItem c in _langChips)
+            Theme.PaintButton(g, b.Rect, b.Variant, b.IconX ? "" : b.Text, _fBtn, true, b.Hover, b.Down);
+            if (b.IconX)
             {
-                bool sel = c.Value == _lang;
+                Color fc = b.Hover ? Theme.Text : Theme.TextMuted;
+                float size = P(14);
+                RectangleF bounds = new RectangleF(
+                    b.Rect.X + (b.Rect.Width - size) / 2f, b.Rect.Y + (b.Rect.Height - size) / 2f, size, size);
+                Lucide.Draw(g, Lucide.X, bounds, fc, false);
+            }
+        }
+
+        private void DrawChips(Graphics g, List<ChipItem> chips, string selected)
+        {
+            foreach (ChipItem c in chips)
+            {
+                bool sel = c.Value == selected;
                 Rectangle r = c.Rect;
-                using (GraphicsPath gp = Theme.RoundedRect(r, 14))
-                using (SolidBrush f = new SolidBrush(sel ? Theme.Accent : Theme.BgAlt))
+                Rectangle rr = new Rectangle(r.X, r.Y, r.Width - 1, r.Height - 1);
+                using (GraphicsPath gp = Theme.RoundedRect(rr, 8))
+                using (SolidBrush f = new SolidBrush(sel ? Theme.Accent : (c.Hover ? Theme.Hover : Theme.BgAlt)))
                 {
                     g.FillPath(f, gp);
                 }
-                using (GraphicsPath gp = Theme.RoundedRect(r, 14))
-                using (Pen pn = new Pen(sel ? Theme.Accent : Theme.CardBorder))
+                using (GraphicsPath gp = Theme.RoundedRect(rr, 8))
+                using (Pen pn = new Pen(sel ? Theme.Accent : (c.Hover ? Theme.Hover : Theme.CardBorder)))
                 {
                     g.DrawPath(pn, gp);
                 }
@@ -388,32 +415,37 @@ namespace DshLauncher
 
         private void DrawCheck(Graphics g, CheckItem c)
         {
-            Rectangle box = new Rectangle(c.Rect.X, c.Rect.Y + P(6), P(16), P(16));
-            using (GraphicsPath gp = Theme.RoundedRect(box, 4))
-            using (SolidBrush f = new SolidBrush(Theme.BgAlt))
+            Rectangle box = new Rectangle(c.Rect.X, c.Rect.Y + P(6), P(17), P(17));
+            Rectangle br = new Rectangle(box.X, box.Y, box.Width - 1, box.Height - 1);
+            using (GraphicsPath gp = Theme.RoundedRect(br, 5))
+            using (SolidBrush f = new SolidBrush(c.Checked ? Theme.Accent : Theme.BgAlt))
             {
                 g.FillPath(f, gp);
             }
-            using (GraphicsPath gp = Theme.RoundedRect(box, 4))
-            using (Pen pn = new Pen(Theme.CardBorder))
+            using (GraphicsPath gp = Theme.RoundedRect(br, 5))
+            using (Pen pn = new Pen(c.Checked ? Theme.Accent : (c.Hover ? Theme.Accent : Theme.CardBorder)))
             {
                 g.DrawPath(pn, gp);
             }
             if (c.Checked)
             {
-                using (Pen p = new Pen(Theme.Accent, P(1.8f)))
+                using (Pen p = new Pen(Color.White, P(1.8f)))
                 {
                     p.StartCap = LineCap.Round;
                     p.EndCap = LineCap.Round;
                     g.DrawLines(p, new Point[] {
-                        new Point(box.X + P(3), box.Y + P(8)),
+                        new Point(box.X + P(4), box.Y + P(9)),
                         new Point(box.X + P(7), box.Y + P(12)),
-                        new Point(box.X + P(13), box.Y + P(4)) });
+                        new Point(box.X + P(13), box.Y + P(5)) });
                 }
             }
             using (SolidBrush t = new SolidBrush(Theme.Text))
+            using (StringFormat sf = new StringFormat())
             {
-                g.DrawString(c.Text, _fLabel, t, c.Rect.X + P(26), c.Rect.Y + P(5));
+                sf.Alignment = StringAlignment.Near;
+                sf.LineAlignment = StringAlignment.Center;
+                Rectangle tr = new Rectangle(c.Rect.X + P(29), c.Rect.Y, c.Rect.Width - P(29), c.Rect.Height);
+                g.DrawString(c.Text, _fLabel, t, tr, sf);
             }
         }
 
@@ -432,15 +464,21 @@ namespace DshLauncher
             }
             foreach (CheckItem c in _checks)
             {
-                if (c.Rect.Contains(e.Location)) hand = true;
+                bool h = c.Rect.Contains(e.Location);
+                if (c.Hover != h) { c.Hover = h; changed = true; }
+                if (h) hand = true;
             }
             foreach (ChipItem c in _langChips)
             {
-                if (c.Rect.Contains(e.Location)) hand = true;
+                bool h = c.Rect.Contains(e.Location);
+                if (c.Hover != h) { c.Hover = h; changed = true; }
+                if (h) hand = true;
             }
             foreach (ChipItem c in _scaleChips)
             {
-                if (c.Rect.Contains(e.Location)) hand = true;
+                bool h = c.Rect.Contains(e.Location);
+                if (c.Hover != h) { c.Hover = h; changed = true; }
+                if (h) hand = true;
             }
             if (changed) Invalidate();
             Cursor = hand ? Cursors.Hand : Cursors.Default;
@@ -488,7 +526,7 @@ namespace DshLauncher
                     return;
                 }
             }
-            if (e.Y < P(50)) NativeDrag();
+            if (e.Y < P(56)) NativeDrag();
         }
 
         protected override void OnMouseUp(MouseEventArgs e)
@@ -517,6 +555,9 @@ namespace DshLauncher
                 if (b.Hover) { b.Hover = false; changed = true; }
                 if (b.Down) { b.Down = false; changed = true; }
             }
+            foreach (CheckItem c in _checks) { if (c.Hover) { c.Hover = false; changed = true; } }
+            foreach (ChipItem c in _langChips) { if (c.Hover) { c.Hover = false; changed = true; } }
+            foreach (ChipItem c in _scaleChips) { if (c.Hover) { c.Hover = false; changed = true; } }
             if (changed) Invalidate();
             Cursor = Cursors.Default;
         }

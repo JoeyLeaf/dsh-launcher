@@ -16,7 +16,7 @@ namespace DshLauncher
     internal static class Program
     {
         /// <summary>应用版本（与 GitHub Release 标签保持一致）。</summary>
-        public const string Version = "0.1.1";
+        public const string Version = "0.2.0";
 
         private static Bitmap _iconBmp;
         private static Icon _icon;
@@ -349,6 +349,7 @@ namespace DshLauncher
         private string _npmVer = "…", _nodeVer = "…", _instVer = "…", _latestVer = "…";
         private StatusKind _kind = StatusKind.Checking;
         private string _statusSub = "";
+        private string _statusDetail; // 状态行次要信息（如 PID），弱化显示
 
         // ---------- 字体 ----------
         private Font _fTitle, _fTag, _fStatusSub, _fCaption, _fValue, _fBtn, _fPill;
@@ -423,7 +424,7 @@ namespace DshLauncher
             InitFonts();
             InitButtons();
             _logView.Font = new Font("Consolas", 9f * _s);
-            _logView.SetBounds(P(20), P(416), P(600), P(172));
+            _logView.SetBounds(P(24), P(382), P(592), P(194));
             ClientSize = new Size(P(WinW), P(WinH));
             try { Theme.ApplyRegion(this, 14); } catch { }
             UpdateButtons();
@@ -434,42 +435,42 @@ namespace DshLauncher
         {
             _fTitle = Theme.Font(14f * _s, FontStyle.Bold);
             _fTag = Theme.Font(8.5f * _s, FontStyle.Regular);
-            _fStatusSub = Theme.Font(11f * _s, FontStyle.Regular);
+            _fStatusSub = Theme.Font(10.5f * _s, FontStyle.Regular);
             _fCaption = Theme.Font(9f * _s, FontStyle.Regular);
-            _fValue = Theme.Font(16f * _s, FontStyle.Bold);
+            _fValue = Theme.Font(15.5f * _s, FontStyle.Bold);
             _fBtn = Theme.Font(10.5f * _s, FontStyle.Regular);
             _fPill = Theme.Font(9.5f * _s, FontStyle.Regular);
         }
 
         private void InitButtons()
         {
-            // 主操作：启停（合并）/ 重启 / 打开页面 —— Lucide 图标按钮
-            _bToggle = NewBtn("", ButtonVariant.Primary, 164, 322, 96, 44);
+            // 主操作：启停（合并）/ 重启 / 打开页面 —— Lucide 图标 + 文字
+            _bToggle = NewBtn("", ButtonVariant.Primary, 24, 306, 220, 44);
             _bToggle.Glyph = GlyphKind.Play;
             _bToggle.OnClick = delegate { if (_running) StopAsync(); else StartAsync(); };
 
-            _bRestart = NewBtn("", ButtonVariant.Secondary, 272, 322, 96, 44);
+            _bRestart = NewBtn("", ButtonVariant.Secondary, 256, 306, 174, 44);
             _bRestart.Glyph = GlyphKind.Restart;
             _bRestart.OnClick = delegate { RestartAsync(); };
 
-            _bOpen = NewBtn("", ButtonVariant.Secondary, 380, 322, 96, 44);
+            _bOpen = NewBtn("", ButtonVariant.Secondary, 442, 306, 174, 44);
             _bOpen.Glyph = GlyphKind.Open;
             _bOpen.OnClick = delegate { OpenUi(); };
 
             // 右上角：设置齿轮 / 最小化 / 关闭
-            _bSettings = NewBtn("", ButtonVariant.Ghost, 498, 12, 34, 30);
+            _bSettings = NewBtn("", ButtonVariant.Ghost, 508, 12, 32, 30);
             _bSettings.Glyph = GlyphKind.Gear;
             _bSettings.OnClick = delegate { OpenSettings(); };
 
-            _bMin = NewBtn("", ButtonVariant.Ghost, 540, 12, 34, 30);
+            _bMin = NewBtn("", ButtonVariant.Ghost, 546, 12, 32, 30);
             _bMin.Glyph = GlyphKind.Minus;
             _bMin.OnClick = delegate { WindowState = FormWindowState.Minimized; }; // 最小化到任务栏
 
-            _bClose = NewBtn("", ButtonVariant.Ghost, 586, 12, 34, 30);
+            _bClose = NewBtn("", ButtonVariant.Ghost, 584, 12, 32, 30);
             _bClose.Glyph = GlyphKind.X;
             _bClose.OnClick = delegate { this.Close(); }; // 关闭 → 按设置进托盘
 
-            _bRefresh = NewBtn(Lang.T("refresh"), ButtonVariant.Ghost, 500, 72, 120, 30);
+            _bRefresh = NewBtn(Lang.T("refresh"), ButtonVariant.Secondary, 516, 73, 100, 28);
             _bRefresh.OnClick = delegate { RefreshAllAsync(); };
         }
 
@@ -487,7 +488,7 @@ namespace DshLauncher
         {
             _logView = new LogView();
             _logView.Font = new Font("Consolas", 9f * _s);
-            _logView.SetBounds(P(20), P(416), P(600), P(172));
+            _logView.SetBounds(P(24), P(382), P(592), P(194));
             Controls.Add(_logView);
         }
 
@@ -537,15 +538,26 @@ namespace DshLauncher
             g.Clear(Theme.Bg);
 
             DrawHeader(g);
+            DrawDivider(g, P(66));
             DrawStatusLine(g);
             DrawCards(g);
             foreach (Btn b in _btns) DrawButton(g, b);
+            DrawLogHeader(g);
+        }
+
+        /// <summary>细分隔线：拉开区域层次，但不抢视觉。</summary>
+        private void DrawDivider(Graphics g, int y)
+        {
+            using (Pen p = new Pen(Theme.Divider))
+            {
+                g.DrawLine(p, P(24), y, P(616), y);
+            }
         }
 
         private void DrawHeader(Graphics g)
         {
             // 徽标：蓝色渐变底 + 白色鲸鱼 + 深蓝眼睛（与托盘图标同一鲸鱼、反色配色）
-            Rectangle badge = new Rectangle(P(20), P(12), P(36), P(36));
+            Rectangle badge = new Rectangle(P(24), P(14), P(36), P(36));
             using (GraphicsPath gp = Theme.RoundedRect(badge, 10))
             using (LinearGradientBrush lg = new LinearGradientBrush(
                 badge, Color.FromArgb(93, 125, 255), Color.FromArgb(77, 107, 254), 90f))
@@ -553,18 +565,18 @@ namespace DshLauncher
                 g.FillPath(lg, gp);
             }
             float bw = P(28f), bh = P(22f);
-            float bx = P(20f) + (P(36f) - bw) / 2f;
-            float by = P(12f) + (P(36f) - bh) / 2f;
+            float bx = P(24f) + (P(36f) - bw) / 2f;
+            float by = P(14f) + (P(36f) - bh) / 2f;
             SvgWhale.Draw(g, new RectangleF(bx, by, bw, bh), Color.White);
 
             // 标题 / 副标题
             using (SolidBrush t = new SolidBrush(Theme.Text))
             {
-                g.DrawString(Lang.T("title"), _fTitle, t, P(66), P(10));
+                g.DrawString(Lang.T("title"), _fTitle, t, P(72), P(11));
             }
             using (SolidBrush m = new SolidBrush(Theme.TextMuted))
             {
-                g.DrawString(Lang.F("tag", Program.Version), _fTag, m, P(66), P(37));
+                g.DrawString(Lang.F("tag", Program.Version), _fTag, m, P(72), P(37));
             }
 
             DrawPill(g);
@@ -577,11 +589,11 @@ namespace DshLauncher
             if (_kind == StatusKind.Stopped) { dotColor = Theme.Red; text = Lang.T("pill_stopped"); }
             else if (_kind == StatusKind.Checking) { dotColor = Theme.Amber; text = Lang.T("pill_checking"); }
 
-            string full = "● " + text;
-            SizeF sz = g.MeasureString(full, _fPill);
-            int pillW = P((int)sz.Width + 22);
+            SizeF sz = g.MeasureString(text, _fPill);
             int pillH = P(26);
-            Rectangle pill = new Rectangle(P(490) - pillW - P(8), P(16), pillW, pillH); // 右边界在齿轮前
+            int pillW = P(26) + (int)sz.Width + P(12);
+            int right = _bSettings.Rect.X - P(10); // 右边界对齐窗口控件
+            Rectangle pill = new Rectangle(right - pillW, P(14), pillW, pillH);
 
             using (GraphicsPath gp = Theme.RoundedRect(pill, pillH / 2))
             using (SolidBrush f = new SolidBrush(Theme.BgAlt))
@@ -593,29 +605,60 @@ namespace DshLauncher
             {
                 g.DrawPath(pn, gp);
             }
+
+            // 状态圆点：真圆 + 一圈柔光（替代字符 "●"，渲染更干净）
+            int dot = P(8);
+            int dotY = pill.Y + (pill.Height - dot) / 2;
+            int dotX = pill.X + P(12);
+            using (SolidBrush halo = new SolidBrush(Color.FromArgb(56, dotColor)))
+            {
+                g.FillEllipse(halo, dotX - P(3), dotY - P(3), dot + P(6), dot + P(6));
+            }
             using (SolidBrush db = new SolidBrush(dotColor))
             {
-                g.DrawString("●", _fPill, db, pill.X + P(10), pill.Y + P(4));
+                g.FillEllipse(db, dotX, dotY, dot, dot);
             }
             using (SolidBrush tb = new SolidBrush(Theme.Text))
+            using (StringFormat sf = new StringFormat())
             {
-                g.DrawString(text, _fPill, tb, pill.X + P(26), pill.Y + P(4));
+                sf.Alignment = StringAlignment.Near;
+                sf.LineAlignment = StringAlignment.Center;
+                Rectangle tr = new Rectangle(pill.X + P(26), pill.Y, pill.Width - P(26), pill.Height);
+                g.DrawString(text, _fPill, tb, tr, sf);
             }
         }
 
         private void DrawStatusLine(Graphics g)
         {
-            // 仅一行状态说明（运行中=地址+PID；未运行=引导提示）；状态由右上角胶囊表达
+            // 一行状态说明：主信息（地址 / 引导）+ 次要信息（PID，弱化）
+            float x = P(24);
+            float y = P(79);
             using (SolidBrush t = new SolidBrush(Theme.Text))
             {
-                g.DrawString(_statusSub, _fStatusSub, t, P(44), P(74));
+                g.DrawString(_statusSub, _fStatusSub, t, x, y);
+            }
+            if (!string.IsNullOrEmpty(_statusDetail))
+            {
+                float w = g.MeasureString(_statusSub, _fStatusSub).Width;
+                using (SolidBrush m = new SolidBrush(Theme.TextMuted))
+                {
+                    g.DrawString("·  " + _statusDetail, _fStatusSub, m, x + w + P(10), y);
+                }
+            }
+        }
+
+        private void DrawLogHeader(Graphics g)
+        {
+            using (SolidBrush m = new SolidBrush(Theme.TextMuted))
+            {
+                g.DrawString(Lang.T("log_title"), _fCaption, m, P(24), P(360));
             }
         }
 
         private void DrawCards(Graphics g)
         {
-            DrawCard(g, P(20), P(130), Lang.T("card_npm"), _npmVer, !_npmOk ? Lang.T("install_node") : null, false, _cardHover == 0);
-            DrawCard(g, P(328), P(130), Lang.T("card_node"), _nodeVer, !_nodeOk ? Lang.T("install_node") : null, false, _cardHover == 1);
+            DrawCard(g, P(24), P(118), Lang.T("card_npm"), _npmVer, !_npmOk ? Lang.T("install_node") : null, false, _cardHover == 0);
+            DrawCard(g, P(324), P(118), Lang.T("card_node"), _nodeVer, !_nodeOk ? Lang.T("install_node") : null, false, _cardHover == 1);
             string instLabel = null;
             bool instGated = false;
             if (!_dshInstalled)
@@ -623,15 +666,15 @@ namespace DshLauncher
                 instGated = !(_npmOk && _nodeOk);
                 instLabel = instGated ? Lang.T("need_node_first") : Lang.T("install_dsh");
             }
-            DrawCard(g, P(20), P(214), Lang.T("card_inst"), _instVer, instLabel, instGated, _cardHover == 2);
-            DrawCard(g, P(328), P(214), Lang.T("card_latest"), _latestVer, null, false, false);
+            DrawCard(g, P(24), P(206), Lang.T("card_inst"), _instVer, instLabel, instGated, _cardHover == 2);
+            DrawCard(g, P(324), P(206), Lang.T("card_latest"), _latestVer, null, false, false);
             DrawUpdateChip(g); // 版本不一致时的"更新"徽标
         }
 
         /// <summary>"更新"徽标：dsh 已安装且存在新版本时，出现在 dsh 已装版本卡片右侧。</summary>
         private Rectangle UpdateChipRect()
         {
-            return new Rectangle(P(20) + P(292) - P(66), P(214) + P(25), P(54), P(24));
+            return new Rectangle(P(24) + P(292) - P(18) - P(56), P(206) + P(14), P(56), P(24));
         }
 
         private bool ChipActive()
@@ -643,17 +686,18 @@ namespace DshLauncher
         {
             if (!ChipActive()) return;
             Rectangle r = UpdateChipRect();
-            using (GraphicsPath gp = Theme.RoundedRect(r, 12))
-            using (SolidBrush f = new SolidBrush(_chipHover ? Theme.Accent : Theme.BgAlt))
+            bool active = _chipHover || _chipDown;
+            using (GraphicsPath gp = Theme.RoundedRect(r, P(12)))
+            using (SolidBrush f = new SolidBrush(active ? Theme.Accent : Theme.AccentSoft))
             {
                 g.FillPath(f, gp);
             }
-            using (GraphicsPath gp = Theme.RoundedRect(r, 12))
-            using (Pen pn = new Pen(_chipHover ? Theme.Accent : Theme.CardBorder))
+            using (GraphicsPath gp = Theme.RoundedRect(r, P(12)))
+            using (Pen pn = new Pen(Theme.Accent, 1f))
             {
                 g.DrawPath(pn, gp);
             }
-            using (SolidBrush t = new SolidBrush(_chipHover ? Color.White : Theme.Text))
+            using (SolidBrush t = new SolidBrush(active ? Color.White : Theme.AccentText))
             {
                 g.DrawString(Lang.T("update_chip"), _fCaption, t, r, _centerFmt);
             }
@@ -661,20 +705,20 @@ namespace DshLauncher
 
         private void DrawCard(Graphics g, int x, int y, string caption, string value, string installLabel, bool gated, bool hover)
         {
-            Rectangle r = new Rectangle(x, y, P(292), P(72));
+            Rectangle r = new Rectangle(x, y, P(292), P(76));
             using (GraphicsPath gp = Theme.RoundedRect(r, 10))
             using (SolidBrush f = new SolidBrush(Theme.Card))
             {
                 g.FillPath(f, gp);
             }
             using (GraphicsPath gp = Theme.RoundedRect(r, 10))
-            using (Pen pn = new Pen(hover ? Theme.Accent : Theme.CardBorder, hover ? 2f : 1f))
+            using (Pen pn = new Pen(hover ? Theme.Accent : Theme.CardBorder, hover ? 1.5f : 1f))
             {
                 g.DrawPath(pn, gp);
             }
             using (SolidBrush m = new SolidBrush(Theme.TextMuted))
             {
-                g.DrawString(caption, _fCaption, m, x + P(16), y + P(10));
+                g.DrawString(caption, _fCaption, m, x + P(18), y + P(13));
             }
             if (installLabel != null)
             {
@@ -682,37 +726,69 @@ namespace DshLauncher
                 Color c = gated ? Theme.TextMuted : (hover ? Color.White : Theme.Accent);
                 using (SolidBrush t = new SolidBrush(c))
                 {
-                    g.DrawString(installLabel + (gated ? "" : " ▶"), _fValue, t, x + P(16), y + P(34));
+                    g.DrawString(installLabel + (gated ? "" : " ▶"), _fValue, t, x + P(18), y + P(39));
                 }
             }
             else
             {
                 using (SolidBrush t = new SolidBrush(Theme.Text))
                 {
-                    g.DrawString(value, _fValue, t, x + P(16), y + P(36));
+                    g.DrawString(value, _fValue, t, x + P(18), y + P(41));
                 }
             }
         }
 
         private void DrawButton(Graphics g, Btn b)
         {
-            Theme.PaintButton(g, b.Rect, b.Variant, b.Text, _fBtn, b.Enabled, b.Hover, b.Down);
-            if (b.Glyph != GlyphKind.None)
+            bool iconAndText = b.Glyph != GlyphKind.None && b.Text.Length > 0;
+            Theme.PaintButton(g, b.Rect, b.Variant, iconAndText ? "" : b.Text, _fBtn, b.Enabled, b.Hover, b.Down);
+            if (b.Glyph == GlyphKind.None) return;
+
+            Color fc;
+            if (!b.Enabled) fc = Theme.TextMuted;
+            else if (b.Variant == ButtonVariant.Primary) fc = Color.White;
+            else if (b.Variant == ButtonVariant.Ghost) fc = b.Hover ? Theme.Text : Theme.TextMuted;
+            else fc = Theme.Text;
+
+            if (!iconAndText)
             {
-                Color fc = b.Enabled ? Theme.Text : Theme.TextMuted;
                 DrawGlyph(g, b, fc);
+                return;
+            }
+
+            // 图标 + 文字：成组水平居中
+            float iconSize = P(18);
+            float gap = P(8);
+            SizeF ts = g.MeasureString(b.Text, _fBtn);
+            float total = iconSize + gap + ts.Width;
+            float gx = b.Rect.X + (b.Rect.Width - total) / 2f;
+            float cy = b.Rect.Y + b.Rect.Height / 2f;
+            DrawGlyphIcon(g, b.Glyph, new RectangleF(gx, cy - iconSize / 2f, iconSize, iconSize), fc);
+            using (SolidBrush tb = new SolidBrush(fc))
+            using (StringFormat sf = new StringFormat())
+            {
+                sf.Alignment = StringAlignment.Near;
+                sf.LineAlignment = StringAlignment.Center;
+                sf.FormatFlags = StringFormatFlags.NoWrap;
+                RectangleF tr = new RectangleF(gx + iconSize + gap, b.Rect.Y, ts.Width + P(2), b.Rect.Height);
+                g.DrawString(b.Text, _fBtn, tb, tr, sf);
             }
         }
 
-        /// <summary>绘制 Lucide 官方图标（替代手绘字形）。</summary>
+        /// <summary>纯图标按钮：在按钮中心绘制 Lucide 图标。</summary>
         private void DrawGlyph(Graphics g, Btn b, Color fc)
         {
             Rectangle r = b.Rect;
             float cx = r.X + r.Width / 2f;
             float cy = r.Y + r.Height / 2f;
             float size = Math.Min(r.Width, r.Height) * 0.55f;
-            RectangleF bounds = new RectangleF(cx - size / 2f, cy - size / 2f, size, size);
-            switch (b.Glyph)
+            DrawGlyphIcon(g, b.Glyph, new RectangleF(cx - size / 2f, cy - size / 2f, size, size), fc);
+        }
+
+        /// <summary>在指定区域绘制 Lucide 官方图标（替代手绘字形）。</summary>
+        private void DrawGlyphIcon(Graphics g, GlyphKind glyph, RectangleF bounds, Color fc)
+        {
+            switch (glyph)
             {
                 case GlyphKind.Play: Lucide.Draw(g, Lucide.Play, bounds, fc, true); break;
                 case GlyphKind.Stop: Lucide.Draw(g, Lucide.Square, bounds, fc, true); break;
@@ -739,10 +815,10 @@ namespace DshLauncher
         private int CardAt(Point pt)
         {
             Rectangle[] r = new Rectangle[] {
-                new Rectangle(P(20), P(130), P(292), P(72)),
-                new Rectangle(P(328), P(130), P(292), P(72)),
-                new Rectangle(P(20), P(214), P(292), P(72)),
-                new Rectangle(P(328), P(214), P(292), P(72)) };
+                new Rectangle(P(24), P(118), P(292), P(76)),
+                new Rectangle(P(324), P(118), P(292), P(76)),
+                new Rectangle(P(24), P(206), P(292), P(76)),
+                new Rectangle(P(324), P(206), P(292), P(76)) };
             for (int i = 0; i < 4; i++) if (r[i].Contains(pt)) return i;
             return -1;
         }
@@ -838,7 +914,7 @@ namespace DshLauncher
                     hit.Down = true;
                     Invalidate();
                 }
-                else if (e.Y < P(64))
+                else if (e.Y < P(66))
                 {
                     NativeDrag(); // 标题栏拖动
                 }
@@ -907,6 +983,10 @@ namespace DshLauncher
             _bToggle.Enabled = idle;
             _bToggle.Variant = _running ? ButtonVariant.Danger : ButtonVariant.Primary;
             _bToggle.Glyph = _running ? GlyphKind.Stop : GlyphKind.Play;
+            _bToggle.Text = _running ? Lang.T("btn_stop") : Lang.T("btn_start");
+            _bRestart.Text = Lang.T("btn_restart");
+            _bOpen.Text = Lang.T("btn_open");
+            _bRefresh.Text = Lang.T("refresh");
             _bRestart.Enabled = idle && _running;
             _bOpen.Enabled = idle && _running;
             _bRefresh.Enabled = idle;
@@ -920,10 +1000,11 @@ namespace DshLauncher
             UpdateButtons();
         }
 
-        private void SetStatus(StatusKind kind, string sub)
+        private void SetStatus(StatusKind kind, string sub, string detail = null)
         {
             _kind = kind;
             _statusSub = sub;
+            _statusDetail = detail;
             _running = kind == StatusKind.Running;
             UpdateButtons();
             Invalidate();
@@ -1007,7 +1088,7 @@ namespace DshLauncher
                 });
                 if (r.Running)
                 {
-                    SetStatus(StatusKind.Running, "http://127.0.0.1:" + port + "   ·   PID " + r.Pid);
+                    SetStatus(StatusKind.Running, "http://127.0.0.1:" + port, "PID " + r.Pid);
                 }
                 else
                 {

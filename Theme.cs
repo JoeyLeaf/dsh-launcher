@@ -10,20 +10,24 @@ namespace DshLauncher
     /// <summary>全局主题：配色、字体、圆角路径、自定义控件。</summary>
     public static class Theme
     {
-        // 调色板（深色）
-        public static readonly Color Bg        = Color.FromArgb(21, 23, 28);
-        public static readonly Color BgAlt     = Color.FromArgb(27, 30, 37);
-        public static readonly Color Card      = Color.FromArgb(30, 33, 41);
-        public static readonly Color CardBorder= Color.FromArgb(46, 51, 62);
+        // 调色板（深色）：低对比分层，背景最深、卡片略亮、边框克制
+        public static readonly Color Bg        = Color.FromArgb(19, 21, 27);
+        public static readonly Color BgAlt     = Color.FromArgb(27, 30, 38);
+        public static readonly Color Card      = Color.FromArgb(28, 31, 39);
+        public static readonly Color CardBorder= Color.FromArgb(43, 48, 60);
+        public static readonly Color Divider   = Color.FromArgb(40, 45, 56);
         public static readonly Color Accent    = Color.FromArgb(77, 107, 254);
-        public static readonly Color AccentDark= Color.FromArgb(58, 86, 224);
+        public static readonly Color AccentDark= Color.FromArgb(62, 92, 240);
+        public static readonly Color AccentSoft= Color.FromArgb(36, 77, 107, 254); // 半透明强调底（徽标/光晕）
+        public static readonly Color AccentText= Color.FromArgb(198, 209, 254);    // 强调色上的浅文字
         public static readonly Color Text      = Color.FromArgb(232, 235, 242);
-        public static readonly Color TextMuted = Color.FromArgb(148, 155, 168);
+        public static readonly Color TextMuted = Color.FromArgb(150, 157, 171);
         public static readonly Color Green     = Color.FromArgb(63, 185, 80);
         public static readonly Color Red       = Color.FromArgb(248, 81, 73);
         public static readonly Color Amber     = Color.FromArgb(222, 165, 49);
-        public static readonly Color LogBg     = Color.FromArgb(13, 15, 20);
-        public static readonly Color LogText   = Color.FromArgb(178, 188, 203);
+        public static readonly Color LogBg     = Color.FromArgb(13, 15, 19);
+        public static readonly Color LogText   = Color.FromArgb(176, 186, 201);
+        public static readonly Color LogMuted  = Color.FromArgb(104, 112, 126);    // 日志时间戳
         public static readonly Color Hover     = Color.FromArgb(52, 57, 68);
         public static readonly Color Disabled  = Color.FromArgb(34, 37, 44);
 
@@ -318,33 +322,59 @@ namespace DshLauncher
         {
             Graphics g = e.Graphics;
             g.Clear(BackColor);
+            g.SmoothingMode = SmoothingMode.AntiAlias;
             g.TextRenderingHint = System.Drawing.Text.TextRenderingHint.AntiAlias;
 
             float lh = Font.GetHeight(g) + 2f;
             int lhInt = Math.Max(12, (int)lh);
-            int visible = Math.Max(1, Height / lhInt);
+            const int padX = 12, padTop = 8;
+            int visible = Math.Max(1, (Height - padTop * 2) / lhInt);
             int total = _lines.Count;
             int start = Math.Max(0, total - visible - _offset);
-            int y = 3;
-            for (int i = start; i < Math.Min(total, start + visible); i++)
+            int y = padTop;
+            using (SolidBrush tb = new SolidBrush(ForeColor))
+            using (SolidBrush mb = new SolidBrush(Theme.LogMuted))
             {
-                using (SolidBrush b = new SolidBrush(ForeColor))
+                for (int i = start; i < Math.Min(total, start + visible); i++)
                 {
-                    g.DrawString(_lines[i], Font, b, 4f, y);
+                    string line = _lines[i];
+                    int split = line.IndexOf(']');
+                    if (line.Length > 2 && line[0] == '[' && split > 1 && split <= 12)
+                    {
+                        // 时间戳前缀弱化显示，正文保持可读
+                        string ts = line.Substring(0, split + 1);
+                        g.DrawString(ts, Font, mb, padX, y);
+                        float tw = g.MeasureString(ts, Font).Width;
+                        g.DrawString(line.Substring(split + 1), Font, tb, padX + tw, y);
+                    }
+                    else
+                    {
+                        g.DrawString(line, Font, tb, padX, y);
+                    }
+                    y += lhInt;
                 }
-                y += lhInt;
             }
 
+            // 圆角细边框（配合 Region 裁出的圆角）
+            Rectangle r = new Rectangle(0, 0, Width - 1, Height - 1);
+            using (GraphicsPath gp = Theme.RoundedRect(r, 10))
             using (Pen p = new Pen(Theme.CardBorder))
             {
-                g.DrawRectangle(p, 0, 0, Width - 1, Height - 1);
+                g.DrawPath(p, gp);
             }
+        }
+
+        protected override void OnResize(EventArgs e)
+        {
+            base.OnResize(e);
+            try { Theme.ApplyRegion(this, 10); } catch { }
+            Invalidate();
         }
 
         protected override void OnMouseWheel(MouseEventArgs e)
         {
             int lh = Math.Max(12, (int)(Font.GetHeight() + 2f));
-            int visible = Math.Max(1, Height / lh);
+            int visible = Math.Max(1, (Height - 16) / lh);
             int maxOffset = Math.Max(0, _lines.Count - visible);
             _offset = Math.Max(0, Math.Min(maxOffset, _offset + e.Delta / 120));
             Invalidate();
