@@ -70,6 +70,27 @@ namespace DshLauncher
                 return;
             }
 
+            // 诊断模式：--diag 启动主窗口，记录缩放 / 窗口尺寸 / 屏幕信息到 logs\dpi-diag.txt 后退出
+            if (args != null && args.Length > 0 && Array.IndexOf(args, "--diag") >= 0)
+            {
+                Application.EnableVisualStyles();
+                Application.SetCompatibleTextRenderingDefault(true);
+                MainForm df = new MainForm();
+                df.Shown += delegate(object s, EventArgs e)
+                {
+                    try
+                    {
+                        string dir = Path.Combine(exeDir, "logs");
+                        Directory.CreateDirectory(dir);
+                        File.WriteAllText(Path.Combine(dir, "dpi-diag.txt"), df.DiagInfo(), Encoding.UTF8);
+                    }
+                    catch { }
+                    Application.Exit();
+                };
+                Application.Run(df);
+                return;
+            }
+
             string shotMain = GetArg(args, "--shot");
             string shotSettings = GetArg(args, "--shot-settings");
             string shotIcon = GetArg(args, "--shot-icon");
@@ -269,7 +290,8 @@ namespace DshLauncher
                 string webLog = Path.Combine(logDir, "dsh-web-selftest.log");
 
                 log("== 启动测试（端口 3081，不影响 3080 主实例）==");
-                bool startOk = DshService.Start(3081, dir, webLog, log);
+                // selftest 走默认代理（与主实例一致），trusted hosts 留空
+                bool startOk = DshService.Start(3081, dir, webLog, log, "", true, "http://127.0.0.1:7890");
                 log("start3081=" + startOk);
                 bool r3081 = DshService.IsRunning(3081, out p);
                 log("running3081=" + r3081 + (r3081 ? " pid=" + p : ""));
@@ -297,6 +319,9 @@ namespace DshLauncher
 
         [DllImport("user32.dll")]
         private static extern bool SetProcessDPIAware();
+
+        [DllImport("user32.dll")]
+        internal static extern uint GetDpiForWindow(IntPtr hWnd);
     }
 
     internal enum StatusKind { Running, Stopped, Checking }
@@ -416,6 +441,27 @@ namespace DshLauncher
             _s = Math.Max(0.7f, s);
         }
 
+        /// <summary>--diag 诊断信息：缩放系数 / 窗口与客户区尺寸 / 屏幕工作区 / 窗口 DPI。</summary>
+        public string DiagInfo()
+        {
+            string r = "version=" + Program.Version + "\r\n";
+            r += "uiScale=" + _settings.UiScale + "\r\n";
+            r += "_s=" + _s.ToString(System.Globalization.CultureInfo.InvariantCulture) + "\r\n";
+            r += "ClientSize=" + ClientSize.Width + "x" + ClientSize.Height + "\r\n";
+            r += "Window=" + Width + "x" + Height + " at " + Location.X + "," + Location.Y + "\r\n";
+            r += "TopLevelControl=" + (TopLevelControl == this ? "self" : "other") + " Visible=" + Visible + "\r\n";
+            try
+            {
+                Rectangle wa = Screen.PrimaryScreen.WorkingArea;
+                Rectangle ba = Screen.PrimaryScreen.Bounds;
+                r += "ScreenBounds=" + ba.Width + "x" + ba.Height + "\r\n";
+                r += "WorkingArea=" + wa.Width + "x" + wa.Height + "\r\n";
+            }
+            catch (Exception ex) { r += "screen error: " + ex.Message + "\r\n"; }
+            try { r += "DpiForWindow=" + Program.GetDpiForWindow(Handle) + "\r\n"; } catch { }
+            return r;
+        }
+
         /// <summary>缩放设置变化后重建布局（按钮、字体、日志区、窗口尺寸）。</summary>
         private void ApplyUiScale()
         {
@@ -423,7 +469,7 @@ namespace DshLauncher
             _btns.Clear();
             InitFonts();
             InitButtons();
-            _logView.Font = new Font("Consolas", 9f * _s);
+            _logView.Font = Theme.FontConsolas(9f * _s, FontStyle.Regular);
             _logView.SetBounds(P(24), P(382), P(592), P(194));
             ClientSize = new Size(P(WinW), P(WinH));
             try { Theme.ApplyRegion(this, 14); } catch { }
@@ -487,7 +533,7 @@ namespace DshLauncher
         private void InitLog()
         {
             _logView = new LogView();
-            _logView.Font = new Font("Consolas", 9f * _s);
+            _logView.Font = Theme.FontConsolas(9f * _s, FontStyle.Regular);
             _logView.SetBounds(P(24), P(382), P(592), P(194));
             Controls.Add(_logView);
         }
@@ -543,6 +589,13 @@ namespace DshLauncher
             DrawCards(g);
             foreach (Btn b in _btns) DrawButton(g, b);
             DrawLogHeader(g);
+
+            // 1px 外边框：为无框窗口的边缘定形（深浅桌面下都清晰）
+            using (GraphicsPath gp = Theme.RoundedRect(new Rectangle(0, 0, ClientSize.Width - 1, ClientSize.Height - 1), 14))
+            using (Pen pn = new Pen(Theme.CardBorder))
+            {
+                g.DrawPath(pn, gp);
+            }
         }
 
         /// <summary>细分隔线：拉开区域层次，但不抢视觉。</summary>
@@ -569,14 +622,15 @@ namespace DshLauncher
             float by = P(14f) + (P(36f) - bh) / 2f;
             SvgWhale.Draw(g, new RectangleF(bx, by, bw, bh), Color.White);
 
-            // 标题 / 副标题
+            // 标题 + 版本号（同一行，不单独成行）
             using (SolidBrush t = new SolidBrush(Theme.Text))
             {
                 g.DrawString(Lang.T("title"), _fTitle, t, P(72), P(11));
             }
+            float tw = g.MeasureString(Lang.T("title"), _fTitle).Width;
             using (SolidBrush m = new SolidBrush(Theme.TextMuted))
             {
-                g.DrawString(Lang.F("tag", Program.Version), _fTag, m, P(72), P(37));
+                g.DrawString("v" + Program.Version, _fTag, m, P(72) + tw + P(10), P(16));
             }
 
             DrawPill(g);
@@ -794,7 +848,7 @@ namespace DshLauncher
                 case GlyphKind.Stop: Lucide.Draw(g, Lucide.Square, bounds, fc, true); break;
                 case GlyphKind.Restart: Lucide.Draw(g, Lucide.RotateCw, bounds, fc, false); break;
                 case GlyphKind.Open: Lucide.Draw(g, Lucide.ExternalLink, bounds, fc, false); break;
-                case GlyphKind.Gear: Lucide.Draw(g, Lucide.Settings, bounds, fc, false); break;
+                case GlyphKind.Gear: Lucide.Draw(g, Lucide.SlidersHorizontal, bounds, fc, false); break;
                 case GlyphKind.Minus: Lucide.Draw(g, Lucide.Minus, bounds, fc, false); break;
                 case GlyphKind.X: Lucide.Draw(g, Lucide.X, bounds, fc, false); break;
             }
@@ -1124,7 +1178,7 @@ namespace DshLauncher
             bool ok = false;
             try
             {
-                ok = await Task.Run<bool>(delegate { return DshService.Start(_settings.Port, WorkDir(), WebLogPath(), AppendLog); });
+                ok = await Task.Run<bool>(delegate { return DshService.Start(_settings.Port, WorkDir(), WebLogPath(), AppendLog, _settings.TrustedHosts, _settings.ProxyEnabled, _settings.ProxyUrl); });
             }
             catch (Exception ex)
             {
@@ -1168,7 +1222,7 @@ namespace DshLauncher
                 }
                 else
                 {
-                    bool started = await Task.Run<bool>(delegate { return DshService.Start(_settings.Port, WorkDir(), WebLogPath(), AppendLog); });
+                    bool started = await Task.Run<bool>(delegate { return DshService.Start(_settings.Port, WorkDir(), WebLogPath(), AppendLog, _settings.TrustedHosts, _settings.ProxyEnabled, _settings.ProxyUrl); });
                     if (started && _settings.AutoOpenBrowser) OpenUi();
                 }
             }
@@ -1263,12 +1317,17 @@ namespace DshLauncher
                     _settings.AutoCheckOnStart = f.Result.AutoCheckOnStart;
                     _settings.Language = f.Result.Language;
                     _settings.UiScale = f.Result.UiScale;
+                    _settings.TrustedHosts = f.Result.TrustedHosts;
+                    _settings.ProxyEnabled = f.Result.ProxyEnabled;
+                    _settings.ProxyUrl = f.Result.ProxyUrl;
                     ConfigStore.Save(_settings);
                     bool langChanged = _settings.Language != Lang.Current;
                     Lang.Current = _settings.Language == Lang.En ? Lang.En : Lang.Zh;
                     AppendLog(Lang.F("settings_saved", _settings.Port,
                         _settings.AutoOpenBrowser ? Lang.T("on") : Lang.T("off"),
-                        _settings.MinimizeToTray ? Lang.T("on") : Lang.T("off")));
+                        _settings.MinimizeToTray ? Lang.T("on") : Lang.T("off"),
+                        _settings.ProxyEnabled ? Lang.T("on") : Lang.T("off"),
+                        string.IsNullOrWhiteSpace(_settings.TrustedHosts) ? "-" : _settings.TrustedHosts));
                     if (langChanged)
                     {
                         _bRefresh.Text = Lang.T("refresh");

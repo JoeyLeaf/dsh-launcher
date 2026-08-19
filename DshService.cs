@@ -18,15 +18,6 @@ namespace DshLauncher
     {
         public const string PkgName = "@deepseek-ai/dsh";
 
-        // ---------- 代理配置（可选） ----------
-        // dsh 的 node 进程默认直连外网；某些网络环境下直连 opencode.ai 等站点会超时，
-        // 需要走本地 Clash 代理（如 FlClash 默认 127.0.0.1:7890）才能访问。
-        // NODE_USE_ENV_PROXY=1 让 node 的 fetch 遵循 HTTP(S)_PROXY 环境变量（Node 24+）。
-        // 不需要代理时把 EnableProxy 改为 false 即可，改完重新编译。
-        public const bool EnableProxy = true;
-        public const string ProxyUrl = "http://127.0.0.1:7890";
-        public const string ProxyNoProxy = "127.0.0.1,localhost,10.10.6.227,api.deepseek.com,.deepseek.com";
-
         // ---------- 环境解析（系统 + 便携 Node） ----------
 
         /// <summary>便携 Node.js 目录：%LocalAppData%\DshLauncher\node\node-v*-win-x64（一键安装的产物）。</summary>
@@ -256,8 +247,14 @@ namespace DshLauncher
 
         // ---------- 动作 ----------
 
-        /// <summary>启动 dsh web（独立进程，日志落盘），轮询等待端口就绪。</summary>
-        public static bool Start(int port, string workDir, string logPath, Action<string> log)
+        /// <summary>
+        /// 启动 dsh web（独立进程，日志落盘），轮询等待端口就绪。
+        /// 启动参数与代理均来自设置：trustedHosts 逐项转 --trusted-host；
+        /// proxyEnabled 且 proxyUrl 非空时注入 HTTP(S)_PROXY 环境变量
+        /// （NODE_USE_ENV_PROXY=1 让 node 的 fetch 遵循代理，Node 24+）。
+        /// </summary>
+        public static bool Start(int port, string workDir, string logPath, Action<string> log, string trustedHosts,
+            bool proxyEnabled, string proxyUrl)
         {
             int pid;
             if (IsRunning(port, out pid))
@@ -271,18 +268,32 @@ namespace DshLauncher
                 Log(log, "未找到 dsh 命令。请先点击「更新 dsh」安装，或确认 npm 环境正常。");
                 return false;
             }
-            string args = "/c " + invocation + " web --port " + port + " > \"" + logPath + "\" 2>&1";
+            string args = "/c " + invocation + " web --port " + port;
+            // 信任域名：逗号分隔的 host / host:port，逐个转成 --trusted-host <host> 追加到 --port 之后
+            foreach (string host in SplitTrustedHosts(trustedHosts))
+            {
+                args += " --trusted-host " + host;
+            }
+            args += " > \"" + logPath + "\" 2>&1";
             try
             {
                 ProcessStartInfo psi = new ProcessStartInfo("cmd.exe", args);
                 psi.UseShellExecute = false;
                 psi.CreateNoWindow = true;
-                if (EnableProxy)
+                if (proxyEnabled && !string.IsNullOrWhiteSpace(proxyUrl))
                 {
-                    psi.EnvironmentVariables["HTTPS_PROXY"] = ProxyUrl;
-                    psi.EnvironmentVariables["HTTP_PROXY"] = ProxyUrl;
+                    psi.EnvironmentVariables["HTTPS_PROXY"] = proxyUrl;
+                    psi.EnvironmentVariables["HTTP_PROXY"] = proxyUrl;
                     psi.EnvironmentVariables["NODE_USE_ENV_PROXY"] = "1";
-                    psi.EnvironmentVariables["NO_PROXY"] = ProxyNoProxy;
+                }
+                else
+                {
+                    // 代理未启用 / 地址留空：显式清空，避免继承父进程（本机/系统）的代理环境变量
+                    // 否则 dsh 仍会通过继承的 HTTPS_PROXY 走代理，配置留空"直连"不生效
+                    psi.EnvironmentVariables["HTTPS_PROXY"] = "";
+                    psi.EnvironmentVariables["HTTP_PROXY"] = "";
+                    psi.EnvironmentVariables["ALL_PROXY"] = "";
+                    psi.EnvironmentVariables["NODE_USE_ENV_PROXY"] = "";
                 }
                 psi.WorkingDirectory = workDir;
                 Process.Start(psi);
@@ -332,7 +343,15 @@ namespace DshLauncher
                 }
             }
             Log(log, "开始更新 " + PkgName + "（npm install -g @latest）…");
-            string args = "/c \"" + npm + "\" install -g " + PkgName + "@latest > \"" + logPath + "\" 2>&1";
+            // 加引号规则：仅当 npm 是完整路径（含 \ 或空格）时才加引号；裸命令名必须裸写。
+            // 本机实测（2026-08-19，npm 12 + Node 24）：cmd 对带引号的裸名 "npm" 会命中全局 bin 里
+            // npm 生成的无扩展名 bash shim——它按 $0 算 basedir（裸名 → "."），于是执行
+            // node ./node_modules/npm/bin/npm-cli.js，按当前工作目录解析 → MODULE_NOT_FOUND，更新必败；
+            // 裸写 npm 则正常走 .cmd shim。完整路径带引号经实测无此问题，故保留。
+            string npmToken = (npm.IndexOf('\\') >= 0 || npm.IndexOf(' ') >= 0)
+                ? "\"" + npm + "\""
+                : npm;
+            string args = "/c " + npmToken + " install -g " + PkgName + "@latest > \"" + logPath + "\" 2>&1";
             Process proc = null;
             try
             {
@@ -355,8 +374,10 @@ namespace DshLauncher
                 Thread.Sleep(300);
                 if ((DateTime.Now - started).TotalSeconds > 300)
                 {
-                    try { proc.Kill(); } catch { }
-                    Log(log, "更新超时（5 分钟），已中止。");
+                    // 杀整个进程树：只 Kill cmd 会留下孤儿 npm/node 继续在后台装
+                    try { RunCapture("taskkill.exe", "/PID " + proc.Id + " /T /F", 5000); }
+                    catch { try { proc.Kill(); } catch { } }
+                    Log(log, "更新超时（5 分钟），已中止（含子进程）。");
                     return false;
                 }
             }
@@ -369,6 +390,24 @@ namespace DshLauncher
         }
 
         // ---------- 内部工具 ----------
+
+        /// <summary>
+        /// 把配置里的信任域名串拆成单个 host/host:port 列表：按逗号 / 分号 / 空白切分，
+        /// 去掉空项与首尾空白。host 可能包含冒号端口（如 dsh.evermoon.me:443），不在此剥离。
+        /// </summary>
+        private static List<string> SplitTrustedHosts(string trustedHosts)
+        {
+            List<string> hosts = new List<string>();
+            if (string.IsNullOrWhiteSpace(trustedHosts)) return hosts;
+            string[] parts = trustedHosts.Split(new char[] { ',', ';', ' ', '\t', '\r', '\n' }, StringSplitOptions.RemoveEmptyEntries);
+            foreach (string raw in parts)
+            {
+                string h = raw.Trim();
+                if (h.Length == 0) continue;
+                if (!hosts.Contains(h)) hosts.Add(h); // 去重
+            }
+            return hosts;
+        }
 
         private static void Log(Action<string> log, string msg)
         {

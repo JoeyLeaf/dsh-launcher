@@ -2,7 +2,7 @@
 
 > 一个轻量的 Windows 托盘小工具：一键检测、启动、停止、重启 **DeepSeek Harness（dsh）** Web 界面，支持托盘驻留与可扩展设置。
 
-[![Version](https://img.shields.io/badge/version-0.1.1-blue)](https://github.com/JoeyLeaf/dsh-launcher/releases)
+[![Version](https://img.shields.io/badge/version-0.1.2-blue)](https://github.com/JoeyLeaf/dsh-launcher/releases)
 [![Platform](https://img.shields.io/badge/platform-Windows%2010%2F11-lightgrey)](https://github.com/JoeyLeaf/dsh-launcher)
 [![License](https://img.shields.io/badge/license-MIT-green)](LICENSE)
 
@@ -14,7 +14,7 @@
 - **一键安装**：环境缺失时版本卡片直接变为安装按钮——先一键装 **Node.js 便携版**（自动下载最新 LTS，免管理员），再一键装 dsh
 - **智能更新**：检测到 dsh 新版本时，已装版本卡片旁出现「更新」徽标，点击即升级（日志实时回显）
 - **托盘驻留**：`—` 最小化到任务栏，`✕` 最小化到托盘；托盘菜单一键操作
-- **设置面板**：右上角齿轮进入——端口、自动开浏览器、关闭最小化到托盘、启动时自动检测、**界面语言（中文 / English）**、**界面缩放（85/100/115%）**（配置持久化，可扩展）
+- **设置面板**：右上角设置按钮进入——端口、自动开浏览器、关闭最小化到托盘、启动时自动检测、**信任域名（`--trusted-host`，公网/隧道访问，开关 + 二级填写）**、**HTTP(S) 代理（启用开关 + 地址/免代理列表，dsh 联网走代理）**、**界面语言（中文 / English）**、**界面缩放（85/100/115%）**（配置持久化，可扩展）
 - **单实例**：重复打开只聚焦已有窗口
 - **零依赖**：单文件 exe（约 70KB），无需安装任何运行时 / SDK / npm 包；图标为内嵌 SVG 路径（Lucide，MIT）
 
@@ -58,12 +58,36 @@ powershell -ExecutionPolicy Bypass -File .\build.ps1
   "autoOpenBrowser": false,  // 启动成功后自动打开浏览器
   "minimizeToTray": true,    // 关闭窗口时最小化到托盘
   "autoCheckOnStart": true,  // 程序启动时自动检测环境
+  "trustedHosts": "",        // 信任域名（逗号分隔），公网/隧道访问必填
+  "proxyEnabled": true,      // 启用 HTTP(S) 代理（dsh 联网走代理）
+  "proxyUrl": "http://127.0.0.1:7890",   // 代理地址（Clash 等）
   "language": "zh",          // 界面语言：zh / en
   "uiScale": 100             // 界面缩放：85 / 100 / 115（高 DPI / RDP 下可调小）
 }
 ```
 
 配置文件损坏时自动回退默认值，无需手动修复。
+
+### 信任域名（`trustedHosts`）
+
+dsh 的 web 服务内置 **browser-trust fence**：通过非本机 Host（如公网域名、cloudflared 隧道）访问 `/api` 时，Host 必须在此白名单内，否则返回 403。仅在 `http://127.0.0.1:<port>` 本机使用可留空；需要通过公网/隧道域名访问时，在此填写该域名，启动时会对每个域名追加 `--trusted-host <host>`：
+
+```
+dsh.evermoon.me, dsh.example.com
+```
+
+- 支持逗号 / 分号 / 空格分隔，自动去空去重；
+- 每项为 host 或 host:port，无端口按 hostname 匹配任意端口；
+- ⚠️ dsh 的**特权平面**（设置 / 凭据 / 打开宿主路径 / LLM 模型发现等接口）只信任本机 loopback，公网访问这些接口 403 属预期安全设计，无法通过此配置放开。
+
+### HTTP(S) 代理（`proxyEnabled` / `proxyUrl`）
+
+部分网络环境直连超时（如无法访问模型 API / opencode 等站点），dsh 需要走本地代理（如 Clash / FlClash 默认 `127.0.0.1:7890`）：
+
+- `proxyEnabled`：总开关；关闭后 dsh 直连，不注入任何代理环境变量。
+- `proxyUrl`：代理地址，如 `http://127.0.0.1:7890`。留空视为直连。
+
+启动 dsh 时若启用代理，会为其进程注入 `HTTP_PROXY` / `HTTPS_PROXY` 环境变量并置 `NODE_USE_ENV_PROXY=1`（Node 24+ 让 fetch 遵循代理），不影响 DshLauncher 自身的本机检测。代理未启用/地址留空时，会显式清空继承的代理环境变量，确保直连生效。
 
 ## 🛠️ 调试参数
 

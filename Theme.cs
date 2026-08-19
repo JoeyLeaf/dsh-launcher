@@ -31,10 +31,21 @@ namespace DshLauncher
         public static readonly Color Hover     = Color.FromArgb(52, 57, 68);
         public static readonly Color Disabled  = Color.FromArgb(34, 37, 44);
 
-        /// <summary>主题字体（微软雅黑 UI，缩放由 AutoScale 处理）。</summary>
+        /// <summary>
+        /// 主题字体（微软雅黑 UI）。按 96dpi 像素值以像素单位创建：
+        /// 点号单位会随窗口 DPI 放大（150% 会话下 10pt→20px），而布局是固定设计像素，
+        /// 文字会溢出窄框被硬截断（如设置窗「界面语言」标签）。像素单位保证任意 DPI
+        /// 会话下渲染与设计一致；96dpi 会话下与点号单位像素级一致（外观不变）。
+        /// </summary>
         public static Font Font(float size, FontStyle style)
         {
-            return new Font("Microsoft YaHei UI", size, style);
+            return new Font("Microsoft YaHei UI", size * 96f / 72f, style, GraphicsUnit.Pixel);
+        }
+
+        /// <summary>日志字体（Consolas，像素单位规则同 Font）。</summary>
+        public static Font FontConsolas(float size, FontStyle style)
+        {
+            return new Font("Consolas", size * 96f / 72f, style, GraphicsUnit.Pixel);
         }
 
         /// <summary>圆角矩形路径。</summary>
@@ -298,7 +309,7 @@ namespace DshLauncher
         {
             BackColor = Theme.LogBg;
             ForeColor = Theme.LogText;
-            Font = new Font("Consolas", 9f);
+            Font = Theme.FontConsolas(9f, FontStyle.Regular);
             SetStyle(ControlStyles.AllPaintingInWmPaint | ControlStyles.OptimizedDoubleBuffer | ControlStyles.UserPaint | ControlStyles.ResizeRedraw, true);
             UpdateStyles();
             TabStop = false;
@@ -667,9 +678,16 @@ namespace DshLauncher
         public const string Square = "M4 4h16v16H4z";
         public const string RotateCw = "M21 12a9 9 0 1 1-9-9c2.52 0 4.93 1 6.74 2.74L21 8M21 3v5h-5";
         public const string ExternalLink = "M15 3h6v6M10 14L21 3M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6";
-        public const string Settings = "M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 1 1.72v.51a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.39a2 2 0 0 0-.73-2.73l-.15-.08a2 2 0 0 1-1-1.74v-.5a2 2 0 0 1 1-1.74l.15-.09a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2zM12 15a3 3 0 1 0 0-6 3 3 0 0 0 0 6z";
+        // 设置：lucide 官方 sliders-horizontal（三档水平滑块），线条简洁，小尺寸下比齿轮清晰
+        public const string SlidersHorizontal = "M21 4h-7M10 4H3M21 12h-9M8 12H3M21 20h-5M12 20H3M14 2v4M8 10v4M16 18v4";
         public const string Minus = "M5 12h14";
         public const string X = "M18 6 6 18M6 6l12 12";
+        // 地球（信任域名）
+        public const string Globe = "M12 2a10 10 0 1 0 0 20 10 10 0 0 0 0-20zM2 12h20M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z";
+        // Wi-Fi（代理）
+        public const string Wifi = "M12 20h.01M2 8.82a15 15 0 0 1 20 0M5 12.859a10 10 0 0 1 14 0M8.5 16.429a5 5 0 0 1 7 0";
+        // 显示器（最小化到托盘 / 窗口）
+        public const string Monitor = "M20 3H4a2 2 0 0 0-2 2v10a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2V5a2 2 0 0 0-2-2zM8 21h8m-4-4v4";
 
         /// <summary>在目标矩形内等比绘制 Lucide 图标（filled=false 用线条描边，线宽按 2/24 比例缩放）。</summary>
         public static void Draw(Graphics g, string pathData, RectangleF bounds, Color color, bool filled)

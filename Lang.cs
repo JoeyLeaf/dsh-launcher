@@ -18,7 +18,6 @@ namespace DshLauncher
         {
             // 标题 / 副标题
             { "title",         new[] { "DSH 启动器", "DSH Launcher" } },
-            { "tag",           new[] { "DeepSeek Harness · Web GUI 托管 · v{0}", "DeepSeek Harness · Web GUI Manager · v{0}" } },
             // 状态胶囊 / 状态行
             { "pill_running",  new[] { "运行中", "Running" } },
             { "pill_stopped",  new[] { "未运行", "Stopped" } },
@@ -75,10 +74,21 @@ namespace DshLauncher
             // 设置
             { "settings_title", new[] { "设置", "Settings" } },
             { "settings_port",  new[] { "端口", "Port" } },
-            { "settings_port_hint", new[] { "dsh web 监听端口（默认 3080）", "dsh web listen port (default 3080)" } },
+            { "settings_port_hint", new[] { "dsh web 监听端口（默认 3080）", "dsh web listening port (default 3080)" } },
+            { "settings_trusted_switch", new[] { "信任公网 / 隧道域名访问（--trusted-host）", "Trust public / tunnel domain access" } },
+            { "settings_trusted", new[] { "信任域名", "Trusted hosts" } },
+            { "settings_trusted_hint", new[] { "公网/隧道访问用的域名，逗号分隔，如 dsh.example.com", "Public/tunnel domain(s), comma separated" } },
+            { "settings_proxy_enable", new[] { "启用 HTTP(S) 代理（dsh 联网走代理）", "Enable HTTP(S) proxy for dsh" } },
+            { "settings_proxy", new[] { "代理地址", "Proxy URL" } },
+            { "settings_proxy_hint", new[] { "如 http://127.0.0.1:7890（Clash 等），留空则直连", "e.g. http://127.0.0.1:7890 (Clash); empty = direct" } },
             { "settings_auto_open", new[] { "启动 dsh 成功后自动打开浏览器", "Open browser after dsh starts" } },
             { "settings_min_tray", new[] { "关闭窗口时最小化到托盘", "Minimize to tray on close" } },
             { "settings_auto_check", new[] { "程序启动时自动检测环境", "Check environment on startup" } },
+            // 分组标题
+            { "sec_general", new[] { "常规", "General" } },
+            { "sec_network", new[] { "网络", "Network" } },
+            { "sec_appearance", new[] { "语言与外观", "Appearance" } },
+            { "port_invalid", new[] { "端口无效（1–65535）", "Invalid port (1–65535)" } },
             { "settings_lang", new[] { "界面语言", "Language" } },
             { "settings_lang_zh", new[] { "中文", "中文" } },
             { "settings_lang_en", new[] { "English", "English" } },
@@ -89,7 +99,7 @@ namespace DshLauncher
             { "settings_tip", new[] { "更多设置将在后续版本中提供。", "More settings in future versions." } },
             { "settings_save", new[] { "保存", "Save" } },
             { "settings_cancel", new[] { "取消", "Cancel" } },
-            { "settings_saved", new[] { "设置已保存：端口 {0} · 自动开浏览器 {1} · 关闭最小化 {2}", "Settings saved: port {0} · auto-open browser {1} · minimize on close {2}" } },
+            { "settings_saved", new[] { "设置已保存：端口 {0} · 自动开浏览器 {1} · 关闭最小化 {2} · 代理 {3} · 信任域名 {4}", "Settings saved: port {0} · auto-open browser {1} · minimize on close {2} · proxy {3} · trusted hosts {4}" } },
             { "on", new[] { "开", "on" } },
             { "off", new[] { "关", "off" } },
             // 安装 Node.js 流程
